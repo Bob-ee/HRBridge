@@ -41,6 +41,8 @@ class SessionStore(context: Context) {
 
     fun observeAll(): Flow<List<SessionMeta>> = dao.observeAll().map { list -> list.map { it.toMeta() } }
 
+    fun close() { db.close() }
+
     /** On launch: any RECORDING row with a non-empty file → FINALIZED at last sample ts (crash recovery). */
     suspend fun recoverOrphans() {
         dao.byState(SessionState.RECORDING.name).forEach { e ->
