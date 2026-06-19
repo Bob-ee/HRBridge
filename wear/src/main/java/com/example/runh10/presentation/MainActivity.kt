@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -67,11 +68,24 @@ class MainActivity : ComponentActivity() {
                     } else {
                         val ui by WorkoutController.uiState.collectAsStateWithLifecycle()
                         val devices by WorkoutController.devices.collectAsStateWithLifecycle()
+                        val remembered by WorkoutController.rememberedDevice.collectAsStateWithLifecycle()
+
+                        // Auto-connect to the remembered device on first composition.
+                        var autoStarted by rememberSaveable { mutableStateOf(false) }
+                        LaunchedEffect(remembered) {
+                            if (!autoStarted && remembered != null) {
+                                autoStarted = true
+                                startWorkout(remembered!!.address)
+                            }
+                        }
+
                         WorkoutFlow(
                             ui = ui,
                             devices = devices,
+                            remembered = remembered,
                             onScan = { WorkoutController.startScan() },
                             onPick = { address -> startWorkout(address) },
+                            onForget = { WorkoutController.forgetDevice() },
                             onEnd = { endWorkout() },
                         )
                     }

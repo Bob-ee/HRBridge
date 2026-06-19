@@ -50,56 +50,98 @@ fun PermissionScreen(onRequest: () -> Unit) {
 fun WorkoutFlow(
     ui: UiState,
     devices: List<ScanDevice>,
+    remembered: ScanDevice?,
     onScan: () -> Unit,
     onPick: (String) -> Unit,
+    onForget: () -> Unit,
     onEnd: () -> Unit,
 ) {
     if (ui.running) {
         ActiveScreen(ui = ui, onEnd = onEnd)
     } else {
-        PrepScreen(devices = devices, onScan = onScan, onPick = onPick)
+        PrepScreen(
+            ui = ui,
+            devices = devices,
+            remembered = remembered,
+            onScan = onScan,
+            onPick = onPick,
+            onForget = onForget,
+        )
     }
 }
 
 @Composable
 private fun PrepScreen(
+    ui: UiState,
     devices: List<ScanDevice>,
+    remembered: ScanDevice?,
     onScan: () -> Unit,
     onPick: (String) -> Unit,
+    onForget: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = "Pair H10",
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colors.primary,
-        )
-        Spacer(Modifier.height(8.dp))
-        Button(onClick = onScan) { Text("Scan") }
-        Spacer(Modifier.height(8.dp))
-        if (devices.isEmpty()) {
+    if (remembered != null) {
+        // Remembered device: show connecting status + change-strap affordance.
+        val isConnected = ui.hrState == "CONNECTED"
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(
-                text = "No straps yet — tap Scan and wake the H10.",
+                text = if (isConnected) "Connected to ${remembered.name}" else "Connecting to ${remembered.name}…",
                 textAlign = TextAlign.Center,
-                fontSize = 12.sp,
-                color = MaterialTheme.colors.onBackground,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colors.primary,
             )
-        } else {
-            devices.forEach { device ->
-                Chip(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    onClick = { onPick(device.address) },
-                    colors = ChipDefaults.primaryChipColors(),
-                    label = { Text(device.name) },
-                    secondaryLabel = { Text("${device.rssi} dBm") },
+            Spacer(Modifier.height(8.dp))
+            Chip(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                onClick = onForget,
+                colors = ChipDefaults.secondaryChipColors(),
+                label = { Text("Change strap") },
+            )
+        }
+    } else {
+        // No remembered device: show scan UI.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "Pair H10",
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colors.primary,
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onScan) { Text("Scan") }
+            Spacer(Modifier.height(8.dp))
+            if (devices.isEmpty()) {
+                Text(
+                    text = "No straps yet — tap Scan and wake the H10.",
+                    textAlign = TextAlign.Center,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colors.onBackground,
                 )
+            } else {
+                devices.forEach { device ->
+                    Chip(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        onClick = { onPick(device.address) },
+                        colors = ChipDefaults.primaryChipColors(),
+                        label = { Text(device.name) },
+                        secondaryLabel = { Text("${device.rssi} dBm") },
+                    )
+                }
             }
         }
     }

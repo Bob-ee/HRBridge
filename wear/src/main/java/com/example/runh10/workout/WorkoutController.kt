@@ -2,6 +2,7 @@ package com.example.runh10.workout
 
 import android.content.Context
 import com.example.runh10.ble.HeartRateBleClient
+import com.example.runh10.data.DevicePrefs
 import com.example.runh10.exercise.ExerciseClientManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,10 +26,14 @@ object WorkoutController {
     private var initialized = false
     private lateinit var ble: HeartRateBleClient
     private lateinit var exercise: ExerciseClientManager
+    private lateinit var devicePrefs: DevicePrefs
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val running = MutableStateFlow(false)
     private val startTime = MutableStateFlow(0L)
+
+    private val _rememberedDevice = MutableStateFlow<ScanDevice?>(null)
+    val rememberedDevice: StateFlow<ScanDevice?> get() = _rememberedDevice
 
     /** 1 Hz tick so elapsed time advances even when no sample arrives. */
     private val ticker = flow {
@@ -50,6 +55,27 @@ object WorkoutController {
         val ctx = appContext.applicationContext
         ble = HeartRateBleClient(ctx)
         exercise = ExerciseClientManager(ctx)
+        devicePrefs = DevicePrefs(ctx)
+
+        // Mirror persisted device into rememberedDevice StateFlow.
+        scope.launch {
+            devicePrefs.lastDevice.collect { saved ->
+                _rememberedDevice.value = saved?.let { (mac, name) ->
+                    ScanDevice(name = name, address = mac, rssi = 0)
+                }
+            }
+        }
+
+        // Persist the device address+name every time we reach CONNECTED.
+        scope.launch {
+            ble.state.collect { st ->
+                if (st == HeartRateBleClient.State.CONNECTED) {
+                    ble.connectedAddressAndName()?.let { (mac, name) ->
+                        devicePrefs.saveLastDevice(mac, name)
+                    }
+                }
+            }
+        }
 
         val merged = combine(
             ble.hr, ble.state, exercise.metrics, running, startTime,
@@ -80,10 +106,21 @@ object WorkoutController {
     fun stopScan() = ble.stopScan()
 
     fun start(deviceAddress: String) {
-        ble.connect(deviceAddress)
+        val isRemembered = deviceAddress == _rememberedDevice.value?.address
+        // Look up name from scan list or remembered device.
+        val deviceName = ble.devices.value.find { it.address == deviceAddress }?.name
+            ?: _rememberedDevice.value?.takeIf { it.address == deviceAddress }?.name
+        ble.setTargetName(deviceName)
+        ble.connect(deviceAddress, autoConnect = isRemembered)
         startTime.value = System.currentTimeMillis()
         running.value = true
         scope.launch { runCatching { exercise.start() } }
+    }
+
+    fun forgetDevice() {
+        scope.launch { devicePrefs.clear() }
+        _rememberedDevice.value = null
+        ble.startScan()
     }
 
     fun stop() {

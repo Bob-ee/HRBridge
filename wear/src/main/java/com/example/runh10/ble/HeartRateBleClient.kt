@@ -59,6 +59,7 @@ class HeartRateBleClient(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var gatt: BluetoothGatt? = null
     private var targetAddress: String? = null
+    private var targetName: String? = null
     private var wantConnected = false
     private var reconnectJob: Job? = null
     private var reconnectAttempts = 0
@@ -99,13 +100,21 @@ class HeartRateBleClient(private val context: Context) {
         if (_state.value == State.SCANNING) _state.value = State.IDLE
     }
 
-    fun connect(address: String) {
+    fun connect(address: String, autoConnect: Boolean = false) {
         stopScan()
         targetAddress = address
         wantConnected = true
         reconnectAttempts = 0
-        // First connect: autoConnect=false is fast since the strap is in range (just scanned).
-        openGatt(autoConnect = false)
+        openGatt(autoConnect = autoConnect)
+    }
+
+    fun setTargetName(name: String?) {
+        targetName = name
+    }
+
+    fun connectedAddressAndName(): Pair<String, String>? {
+        val addr = targetAddress ?: return null
+        return addr to (targetName ?: "Polar H10")
     }
 
     fun disconnect() {
