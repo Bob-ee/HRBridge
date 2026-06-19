@@ -10,6 +10,8 @@ import com.example.runh10.exercise.ExerciseClientManager
 import com.example.runh10.session.SessionRecorder
 import com.example.runh10.session.SessionStore
 import com.example.runh10.shared.model.Split
+import com.example.runh10.voice.MileAnnouncement
+import com.example.runh10.voice.VoiceCoach
 import com.example.runh10.zones.ZoneCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +72,8 @@ object WorkoutController {
     private var rollingPace = RollingPace()
 
     @Volatile private var zoneCalc: ZoneCalculator? = null
+    @Volatile private var currentSettings: RunSettings = RunSettings()
+    private lateinit var voice: VoiceCoach
 
     private val _splits = mutableListOf<Split>()
     private var warmupDistanceMeters: Double? = null
@@ -92,6 +96,7 @@ object WorkoutController {
         store = SessionStore(ctx)
         recorder = SessionRecorder(scope, store)
         settingsStore = SettingsStore(ctx)
+        voice = VoiceCoach(ctx)
         scope.launch { store.recoverOrphans() }
 
         // Mirror persisted device into rememberedDevice StateFlow.
@@ -114,9 +119,10 @@ object WorkoutController {
             }
         }
 
-        // Keep ZoneCalculator in sync with user settings.
+        // Keep ZoneCalculator and currentSettings in sync with user settings.
         scope.launch {
             settingsStore.settings.collect { s: RunSettings ->
+                currentSettings = s
                 zoneCalc = s.effectiveMaxHr()?.let { mx ->
                     s.restingHr?.let { r -> ZoneCalculator(mx, r) }
                 }
@@ -142,9 +148,16 @@ object WorkoutController {
                 when (ev) {
                     RunEvent.RUN_DETECTED -> {
                         warmupDistanceMeters = distance
+                        if (currentSettings.announce) voice.say("Run detected")
                     }
-                    RunEvent.AUTO_PAUSED, RunEvent.MANUAL_PAUSED -> clock.pause()
-                    RunEvent.AUTO_RESUMED, RunEvent.RESUMED -> clock.resume()
+                    RunEvent.AUTO_PAUSED, RunEvent.MANUAL_PAUSED -> {
+                        clock.pause()
+                        if (ev == RunEvent.AUTO_PAUSED && currentSettings.announce) voice.say("Paused")
+                    }
+                    RunEvent.AUTO_RESUMED, RunEvent.RESUMED -> {
+                        clock.resume()
+                        if (ev == RunEvent.AUTO_RESUMED && currentSettings.announce) voice.say("Resumed")
+                    }
                     null -> Unit
                 }
 
@@ -152,7 +165,13 @@ object WorkoutController {
                     rollingPace.add(now, distance ?: 0.0)
                     val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
                     splitTracker.onSample(runDist, clock.movingMs(), bpm, m.metrics.altitude)
-                        ?.let { _splits.add(it) }
+                        ?.let { split ->
+                            _splits.add(split)
+                            if (currentSettings.announce) {
+                                val hrZoneForAnnouncement = if (bpm != null) zoneCalc?.zoneFor(bpm) else null
+                                voice.say(MileAnnouncement.build(split, hrZoneForAnnouncement, currentSettings))
+                            }
+                        }
                 }
             }
 
@@ -287,6 +306,7 @@ object WorkoutController {
         ble.disconnect()
         scope.launch { exercise.stop() }
         scope.launch { recorder.stop() }
+        voice.shutdown()
     }
 
     private data class Merged(
