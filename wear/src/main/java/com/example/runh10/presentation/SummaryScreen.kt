@@ -27,7 +27,7 @@ import java.util.Locale
 @Composable
 fun SummaryScreen(ui: UiState, onDone: () -> Unit) {
     val totalElevFt = ui.splits.sumOf { it.elevationGainM } * 3.28084
-    val elevDisplay = if (totalElevFt < 0.5 && ui.splits.isEmpty()) "—"
+    val elevDisplay = if (ui.splits.isEmpty()) "—"
     else String.format(Locale.US, "%.0f ft", totalElevFt)
 
     val avgHrDisplay = weightedAvgHr(ui.splits)
