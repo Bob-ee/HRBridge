@@ -60,7 +60,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
 
-    // TODO(Task 2): implementation(project(":shared"))
+    implementation(project(":shared"))
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
     implementation(libs.androidx.datastore.preferences)

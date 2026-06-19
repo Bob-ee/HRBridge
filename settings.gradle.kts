@@ -22,4 +22,4 @@ dependencyResolutionManagement {
 rootProject.name = "Run H10"
 include(":mobile")
 include(":wear")
- 
+include(":shared")
