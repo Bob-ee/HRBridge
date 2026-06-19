@@ -107,7 +107,7 @@ private fun PrepScreen(
                 onClick = onStart,
                 enabled = isConnected,
             ) { Text("Start") }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             Chip(
                 modifier = Modifier
                     .fillMaxWidth()

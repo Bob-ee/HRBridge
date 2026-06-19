@@ -134,7 +134,10 @@ object WorkoutController {
     }
 
     /**
-     * Begin-run: sets running=true and starts the exercise session + recorder.
+     * Begin-run: flips [running] to true, records the start timestamp, and issues an
+     * async [ExerciseClientManager.start] to begin the Health Services exercise session.
+     * The foreground service and wake lock are already held from the [connectStrap] /
+     * ACTION_CONNECT step. A session recorder will be wired in here in Task 8.
      * Must only be called AFTER connectStrap() has established (or is establishing) a link.
      */
     fun beginRun() {

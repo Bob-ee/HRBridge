@@ -49,10 +49,14 @@ class WorkoutForegroundService : Service() {
             }
 
             ACTION_START -> {
-                // Begin-run: strap is already connected (or connecting). Just start
-                // the exercise session / recorder. FGS + wake-lock already held from
-                // the prior ACTION_CONNECT; calling startAsForeground() again is safe
-                // (idempotent on Android) but guard to avoid duplicate notifications.
+                // Begin-run: defensively (re)assert foreground + wake-lock before
+                // starting the exercise session. Under normal flow ACTION_CONNECT has
+                // already called both; but START_STICKY redelivery after a process kill
+                // can bring ACTION_START without a preceding ACTION_CONNECT in this
+                // process-incarnation. startForeground() is idempotent when already
+                // foreground; acquireWakeLock() is safe to call again.
+                startAsForeground()
+                acquireWakeLock()
                 WorkoutController.init(applicationContext)
                 WorkoutController.beginRun()
             }
