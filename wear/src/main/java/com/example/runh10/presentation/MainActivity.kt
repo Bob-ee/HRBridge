@@ -101,7 +101,8 @@ class MainActivity : ComponentActivity() {
                             onPick = { address -> connectStrap(address, autoConnect = false) },
                             onForget = { WorkoutController.forgetDevice() },
                             onStart = { beginRun() },
-                            onEnd = { endWorkout() },
+                            onEnd = { stopWorkout() },
+                            onDone = { finishWorkout() },
                             onPauseToggle = {
                                 if (ui.runState == RunState.MANUAL_PAUSED || ui.runState == RunState.AUTO_PAUSED)
                                     WorkoutController.manualResume()
@@ -145,11 +146,14 @@ class MainActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, intent)
     }
 
-    private fun endWorkout() {
+    private fun stopWorkout() {
         val intent = Intent(this, WorkoutForegroundService::class.java).apply {
             action = WorkoutForegroundService.ACTION_STOP
         }
         startService(intent)
+    }
+
+    private fun finishWorkout() {
         finishAndRemoveTask()
     }
 }

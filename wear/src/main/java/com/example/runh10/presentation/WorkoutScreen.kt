@@ -73,6 +73,7 @@ fun WorkoutFlow(
     onForget: () -> Unit,
     onStart: () -> Unit,
     onEnd: () -> Unit,
+    onDone: () -> Unit,
     onPauseToggle: () -> Unit,
     onLap: () -> Unit,
     onStartNow: () -> Unit,
@@ -86,14 +87,24 @@ fun WorkoutFlow(
     onToggleAutoPause: (Boolean) -> Unit,
 ) {
     var showSettings by remember { mutableStateOf(false) }
+    var showSummary by remember { mutableStateOf(false) }
+    var summaryUi by remember { mutableStateOf<UiState?>(null) }
 
     when {
+        showSummary && summaryUi != null -> SummaryScreen(
+            ui = summaryUi!!,
+            onDone = onDone,
+        )
         ui.running -> ActiveScreen(
             ui = ui,
             onPauseToggle = onPauseToggle,
             onLap = onLap,
             onStartNow = onStartNow,
-            onEnd = onEnd,
+            onEnd = {
+                summaryUi = ui
+                showSummary = true
+                onEnd()
+            },
         )
         showSettings -> SettingsScreen(
             settings = settings,
@@ -432,23 +443,23 @@ private fun Metric(label: String, value: String, sub: String?) {
     }
 }
 
-private fun formatElapsed(sec: Long): String {
+internal fun formatElapsed(sec: Long): String {
     val m = sec / 60
     val s = sec % 60
     return String.format(Locale.US, "%d:%02d", m, s)
 }
 
-private fun formatMiles(meters: Double?): String {
+internal fun formatMiles(meters: Double?): String {
     if (meters == null) return "—"
     return String.format(Locale.US, "%.2f mi", meters / 1609.344)
 }
 
-private fun formatMilesShort(meters: Double?): String {
+internal fun formatMilesShort(meters: Double?): String {
     if (meters == null) return "0.00"
     return String.format(Locale.US, "%.2f", meters / 1609.344)
 }
 
-private fun formatPace(speedMps: Double?): String {
+internal fun formatPace(speedMps: Double?): String {
     if (speedMps == null || speedMps < 0.1) return "—"
     val secPerMile = (1609.344 / speedMps).roundToInt()
     val m = secPerMile / 60
