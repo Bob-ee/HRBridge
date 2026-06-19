@@ -73,6 +73,7 @@ object WorkoutController {
 
     @Volatile private var zoneCalc: ZoneCalculator? = null
     @Volatile private var currentSettings: RunSettings = RunSettings()
+    private lateinit var appContext: Context
     private lateinit var voice: VoiceCoach
 
     private val _splits = mutableListOf<Split>()
@@ -90,6 +91,7 @@ object WorkoutController {
         if (initialized) return
         initialized = true
         val ctx = appContext.applicationContext
+        this.appContext = ctx
         ble = HeartRateBleClient(ctx)
         exercise = ExerciseClientManager(ctx)
         devicePrefs = DevicePrefs(ctx)
@@ -253,6 +255,7 @@ object WorkoutController {
         stateMachine = RunStateMachine()
         splitTracker = SplitTracker()
         rollingPace = RollingPace()
+        voice = VoiceCoach(appContext)
         _splits.clear()
         warmupDistanceMeters = null
 
