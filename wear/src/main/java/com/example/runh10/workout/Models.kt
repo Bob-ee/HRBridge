@@ -21,6 +21,7 @@ data class ExerciseMetrics(
     val lat: Double? = null,
     val lon: Double? = null,
     val altitude: Double? = null,
+    val cadenceSpm: Double? = null,
     val gps: String = "UNKNOWN",
     val exerciseState: String = "—",
 )

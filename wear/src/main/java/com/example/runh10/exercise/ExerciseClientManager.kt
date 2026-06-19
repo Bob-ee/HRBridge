@@ -38,6 +38,7 @@ class ExerciseClientManager(context: Context) {
             val distance = (latest.getData(DataType.DISTANCE_TOTAL)?.total as? Number)?.toDouble()
             val speed = latest.getData(DataType.SPEED).lastOrNull()?.value
             val location = latest.getData(DataType.LOCATION).lastOrNull()?.value
+            val cadence = latest.getData(DataType.STEPS_PER_MINUTE).lastOrNull()?.value
             _metrics.update {
                 it.copy(
                     distanceMeters = distance ?: it.distanceMeters,
@@ -45,6 +46,7 @@ class ExerciseClientManager(context: Context) {
                     lat = location?.latitude ?: it.lat,
                     lon = location?.longitude ?: it.lon,
                     altitude = location?.altitude ?: it.altitude,
+                    cadenceSpm = (cadence as? Number)?.toDouble() ?: it.cadenceSpm,
                     exerciseState = update.exerciseStateInfo.state.toString(),
                 )
             }
@@ -67,7 +69,7 @@ class ExerciseClientManager(context: Context) {
 
     suspend fun start() {
         val config = ExerciseConfig.builder(ExerciseType.RUNNING)
-            .setDataTypes(setOf(DataType.LOCATION, DataType.SPEED, DataType.DISTANCE_TOTAL))
+            .setDataTypes(setOf(DataType.LOCATION, DataType.SPEED, DataType.DISTANCE_TOTAL, DataType.STEPS_PER_MINUTE))
             .setIsAutoPauseAndResumeEnabled(false)
             .setIsGpsEnabled(true)
             .build()
