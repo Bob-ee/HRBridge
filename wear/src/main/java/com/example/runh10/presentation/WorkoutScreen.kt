@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,6 +69,7 @@ fun WorkoutFlow(
     devices: List<ScanDevice>,
     remembered: ScanDevice?,
     settings: RunSettings,
+    ambientState: AmbientState = AmbientState(),
     onScan: () -> Unit,
     onPick: (String) -> Unit,
     onForget: () -> Unit,
@@ -97,6 +99,7 @@ fun WorkoutFlow(
         )
         ui.running -> ActiveScreen(
             ui = ui,
+            ambientState = ambientState,
             onPauseToggle = onPauseToggle,
             onLap = onLap,
             onStartNow = onStartNow,
@@ -238,11 +241,17 @@ private fun PrepScreen(
 @Composable
 private fun ActiveScreen(
     ui: UiState,
+    ambientState: AmbientState = AmbientState(),
     onPauseToggle: () -> Unit,
     onLap: () -> Unit,
     onStartNow: () -> Unit,
     onEnd: () -> Unit,
 ) {
+    if (ambientState.isAmbient) {
+        AmbientActiveScreen(ui = ui, ambientState = ambientState)
+        return
+    }
+
     val paused = ui.runState == RunState.AUTO_PAUSED || ui.runState == RunState.MANUAL_PAUSED
     val warmup = ui.runState == RunState.WARMUP
     val sweep = ui.hrZone?.let { it.toFloat() / 5f } ?: 0.2f
@@ -352,6 +361,67 @@ private fun ActiveScreen(
                 }
                 ControlButton(label = "⚑", onClick = onLap)
                 ControlButton(label = "■", onClick = onEnd, danger = true)
+            }
+        }
+    }
+}
+
+/**
+ * Low-power layout shown while the watch is in ambient mode. The FGS keeps
+ * recording; this just renders a burn-in-safe, near-black snapshot. Fast-moving
+ * metrics (HR, pace) show "--" because they are only refreshed on ambient ticks;
+ * the run time + distance (monotonic) are shown.
+ */
+@Composable
+private fun AmbientActiveScreen(ui: UiState, ambientState: AmbientState) {
+    // Burn-in protection: nudge content a couple px off-center so static text
+    // doesn't sit on the same pixels for the whole ambient session.
+    val shift = if (ambientState.burnInProtection) 3.dp else 0.dp
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        // Outline-only ring (no fill, no alpha) — honors low-bit panels.
+        ZoneRing(
+            zone = ui.hrZone,
+            sweepFraction = 0f,
+            dim = false,
+            ambient = true,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(x = shift, y = shift)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = formatElapsed(ui.movingSec),
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFBFBFBF),
+            )
+            Text(
+                text = "MOVING TIME",
+                fontSize = 9.sp,
+                color = Color(0xFF666666),
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                MetricCompact(label = "mi", value = formatMilesShort(ui.distanceMeters), dim = true)
+                MetricCompact(label = "/mi", value = "--", dim = true)
+                MetricCompact(label = "bpm", value = "--", dim = true)
             }
         }
     }

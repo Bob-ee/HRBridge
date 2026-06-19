@@ -27,6 +27,7 @@ fun ZoneRing(
     sweepFraction: Float,
     dim: Boolean,
     modifier: Modifier = Modifier,
+    ambient: Boolean = false,
 ) {
     val color = if (dim) Color(0xFF262626) else zoneColor(zone)
     val pathEffect = if (dim) PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f) else null
@@ -36,6 +37,21 @@ fun ZoneRing(
         val inset = strokeWidth / 2f + 2f
         val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
         val topLeft = Offset(inset, inset)
+
+        // Ambient: draw only a thin, solid, dim outline — no colored fill, no
+        // dashes or alpha (low-bit ambient panels have a tiny color depth).
+        if (ambient) {
+            drawArc(
+                color = Color(0xFF3A3A3A),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = 3f),
+            )
+            return@Canvas
+        }
 
         // Track ring
         drawArc(

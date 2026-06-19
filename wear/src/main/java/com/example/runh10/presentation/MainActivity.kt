@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.material.MaterialTheme
 import com.example.runh10.data.SettingsStore
 import com.example.runh10.presentation.theme.RunH10Theme
@@ -32,6 +33,33 @@ import com.example.runh10.workout.WorkoutController
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    // Ambient state — hoisted here so the observer (which runs on the Activity)
+    // can write to it, and Compose can read it reactively.
+    private val _ambientState = mutableStateOf(AmbientState())
+
+    private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
+        override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
+            // Switch to the low-power layout.
+            _ambientState.value = AmbientState(
+                isAmbient = true,
+                burnInProtection = ambientDetails.burnInProtectionRequired,
+                lowBitAmbient = ambientDetails.deviceHasLowBitAmbient,
+            )
+        }
+
+        override fun onExitAmbient() {
+            // Back to the full interactive layout.
+            _ambientState.value = AmbientState()
+        }
+
+        override fun onUpdateAmbient() {
+            // Periodic refresh while ambient. Data comes from the FGS-driven uiState;
+            // nothing to recompute here.
+        }
+    }
+
+    private val ambientObserver = AmbientLifecycleObserver(this, ambientCallback)
 
     private val requiredPermissions: Array<String> = buildList {
         add(Manifest.permission.BLUETOOTH_SCAN)
@@ -50,6 +78,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycle.addObserver(ambientObserver)
         WorkoutController.init(applicationContext)
         val settingsStore = SettingsStore(applicationContext)
 
@@ -60,6 +89,8 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(MaterialTheme.colors.background),
                 ) {
+                    val ambientState by _ambientState
+
                     var granted by remember { mutableStateOf(hasAllPermissions()) }
                     val launcher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestMultiplePermissions(),
@@ -97,6 +128,7 @@ class MainActivity : ComponentActivity() {
                             devices = devices,
                             remembered = pendingDevice,
                             settings = settings,
+                            ambientState = ambientState,
                             onScan = { WorkoutController.startScan() },
                             onPick = { address -> connectStrap(address, autoConnect = false) },
                             onForget = { WorkoutController.forgetDevice() },
@@ -157,3 +189,10 @@ class MainActivity : ComponentActivity() {
         finishAndRemoveTask()
     }
 }
+
+/** Ambient-mode flags hoisted from [AmbientLifecycleObserver] into Compose state. */
+data class AmbientState(
+    val isAmbient: Boolean = false,
+    val burnInProtection: Boolean = false,
+    val lowBitAmbient: Boolean = false,
+)

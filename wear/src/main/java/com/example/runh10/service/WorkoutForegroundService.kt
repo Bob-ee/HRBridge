@@ -12,9 +12,19 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.wear.ongoing.OngoingActivity
+import androidx.wear.ongoing.Status
 import com.example.runh10.R
 import com.example.runh10.presentation.MainActivity
+import com.example.runh10.presentation.formatElapsed
+import com.example.runh10.presentation.formatMiles
 import com.example.runh10.workout.WorkoutController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Typed (health|location) foreground service that keeps the run recording while the
@@ -26,6 +36,15 @@ import com.example.runh10.workout.WorkoutController
 class WorkoutForegroundService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** Service-scoped coroutine scope — cancelled in onDestroy. */
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Job that drives OngoingActivity status updates; replaced on each startAsForeground. */
+    private var statusUpdateJob: Job? = null
+
+    /** The OngoingActivity instance — held so we can update its status while running. */
+    private var ongoingActivity: OngoingActivity? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -66,7 +85,8 @@ class WorkoutForegroundService : Service() {
 
     private fun startAsForeground() {
         createChannel()
-        val notification = buildNotification()
+        val (notification, ongoing) = buildNotificationWithOngoing()
+        ongoingActivity = ongoing
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
                 NOTIF_ID,
@@ -77,22 +97,64 @@ class WorkoutForegroundService : Service() {
         } else {
             startForeground(NOTIF_ID, notification)
         }
+        startStatusUpdates()
     }
 
-    private fun buildNotification(): Notification {
-        val openIntent = PendingIntent.getActivity(
+    /**
+     * Builds the foreground notification and attaches an [OngoingActivity] to it.
+     * Returns both so [startAsForeground] can pass the notification to startForeground
+     * and retain the OngoingActivity reference for later status updates.
+     */
+    private fun buildNotificationWithOngoing(): Pair<Notification, OngoingActivity> {
+        val touchIntent = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Run H10")
             .setContentText("Recording run…")
             .setSmallIcon(R.drawable.splash_icon)
             .setOngoing(true)
-            .setContentIntent(openIntent)
+            .setContentIntent(touchIntent)
+
+        val initialStatus = Status.Builder()
+            .addTemplate("#dist# • #time#")
+            .addPart("dist", Status.TextPart("0.00 mi"))
+            .addPart("time", Status.TextPart("0:00"))
             .build()
+
+        val ongoing = OngoingActivity.Builder(this, NOTIF_ID, builder)
+            .setStaticIcon(R.mipmap.ic_launcher)
+            .setTouchIntent(touchIntent)
+            .setStatus(initialStatus)
+            .build()
+        ongoing.apply(this)
+
+        return Pair(builder.build(), ongoing)
+    }
+
+    /**
+     * Collects [WorkoutController.uiState] and pushes updated status text to the
+     * OngoingActivity on every emission. Cancelled via [statusUpdateJob] in
+     * [stopWorkout] and [onDestroy].
+     */
+    private fun startStatusUpdates() {
+        statusUpdateJob?.cancel()
+        statusUpdateJob = serviceScope.launch {
+            WorkoutController.uiState.collect { ui ->
+                val activity = ongoingActivity ?: return@collect
+                val distText = formatMiles(ui.distanceMeters)
+                val timeText = formatElapsed(ui.elapsedSec)
+                val status = Status.Builder()
+                    .addTemplate("#dist# • #time#")
+                    .addPart("dist", Status.TextPart(distText))
+                    .addPart("time", Status.TextPart(timeText))
+                    .build()
+                activity.update(this@WorkoutForegroundService, status)
+            }
+        }
     }
 
     private fun createChannel() {
@@ -117,6 +179,8 @@ class WorkoutForegroundService : Service() {
     }
 
     private fun stopWorkout() {
+        statusUpdateJob?.cancel()
+        statusUpdateJob = null
         WorkoutController.stop()
         releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -124,6 +188,8 @@ class WorkoutForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        statusUpdateJob?.cancel()
+        serviceScope.cancel()
         releaseWakeLock()
         super.onDestroy()
     }
