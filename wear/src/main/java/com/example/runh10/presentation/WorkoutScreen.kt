@@ -1,0 +1,183 @@
+package com.example.runh10.presentation
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.Text
+import com.example.runh10.workout.ScanDevice
+import com.example.runh10.workout.UiState
+import java.util.Locale
+import kotlin.math.roundToInt
+
+@Composable
+fun PermissionScreen(onRequest: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Run H10 needs sensors, location & Bluetooth",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colors.onBackground,
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = onRequest) { Text("Grant") }
+    }
+}
+
+@Composable
+fun WorkoutFlow(
+    ui: UiState,
+    devices: List<ScanDevice>,
+    onScan: () -> Unit,
+    onPick: (String) -> Unit,
+    onEnd: () -> Unit,
+) {
+    if (ui.running) {
+        ActiveScreen(ui = ui, onEnd = onEnd)
+    } else {
+        PrepScreen(devices = devices, onScan = onScan, onPick = onPick)
+    }
+}
+
+@Composable
+private fun PrepScreen(
+    devices: List<ScanDevice>,
+    onScan: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Pair H10",
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colors.primary,
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = onScan) { Text("Scan") }
+        Spacer(Modifier.height(8.dp))
+        if (devices.isEmpty()) {
+            Text(
+                text = "No straps yet — tap Scan and wake the H10.",
+                textAlign = TextAlign.Center,
+                fontSize = 12.sp,
+                color = MaterialTheme.colors.onBackground,
+            )
+        } else {
+            devices.forEach { device ->
+                Chip(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    onClick = { onPick(device.address) },
+                    colors = ChipDefaults.primaryChipColors(),
+                    label = { Text(device.name) },
+                    secondaryLabel = { Text("${device.rssi} dBm") },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveScreen(ui: UiState, onEnd: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = formatElapsed(ui.elapsedSec),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colors.primary,
+        )
+        Spacer(Modifier.height(6.dp))
+
+        Metric("HR", ui.bpm?.let { "$it bpm" } ?: "—", ui.hrState)
+        Metric("RR", if (ui.rrMs.isEmpty()) "—" else ui.rrMs.joinToString(",") { "$it" } + " ms", null)
+        Metric("Dist", formatMiles(ui.distanceMeters), null)
+        Metric("Pace", formatPace(ui.speedMps), null)
+        Metric("GPS", ui.gps, ui.exerciseState)
+        ui.lat?.let { lat ->
+            Metric("Loc", String.format(Locale.US, "%.4f, %.4f", lat, ui.lon ?: 0.0), null)
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = onEnd,
+            colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors(),
+        ) { Text("End & Exit") }
+    }
+}
+
+@Composable
+private fun Metric(label: String, value: String, sub: String?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, fontSize = 13.sp, color = MaterialTheme.colors.onBackground)
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = value,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colors.onSurface,
+            )
+            if (sub != null) {
+                Text(text = sub, fontSize = 10.sp, color = MaterialTheme.colors.onBackground)
+            }
+        }
+    }
+}
+
+private fun formatElapsed(sec: Long): String {
+    val m = sec / 60
+    val s = sec % 60
+    return String.format(Locale.US, "%d:%02d", m, s)
+}
+
+private fun formatMiles(meters: Double?): String {
+    if (meters == null) return "—"
+    return String.format(Locale.US, "%.2f mi", meters / 1609.344)
+}
+
+private fun formatPace(speedMps: Double?): String {
+    if (speedMps == null || speedMps < 0.1) return "—"
+    val secPerMile = (1609.344 / speedMps).roundToInt()
+    val m = secPerMile / 60
+    val s = secPerMile % 60
+    return String.format(Locale.US, "%d:%02d /mi", m, s)
+}
