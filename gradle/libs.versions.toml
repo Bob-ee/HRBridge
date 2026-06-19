@@ -16,6 +16,15 @@ composeFoundation = "1.2.1"
 wearToolingPreview = "1.0.0"
 activityCompose = "1.9.2"
 coreSplashscreen = "1.0.1"
+ksp = "2.0.0-1.0.24"
+room = "2.8.4"
+datastore = "1.2.1"
+kotlinxSerializationJson = "1.6.3"
+wearOngoing = "1.1.0"
+wear = "1.4.0"
+coroutinesTest = "1.8.1"
+testCore = "1.6.1"
+testRunner = "1.6.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,9 +48,20 @@ androidx-compose-foundation = { group = "androidx.wear.compose", name = "compose
 androidx-wear-tooling-preview = { group = "androidx.wear", name = "wear-tooling-preview", version.ref = "wearToolingPreview" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+androidx-wear-ongoing = { group = "androidx.wear", name = "wear-ongoing", version.ref = "wearOngoing" }
+androidx-wear = { group = "androidx.wear", name = "wear", version.ref = "wear" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "testCore" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
