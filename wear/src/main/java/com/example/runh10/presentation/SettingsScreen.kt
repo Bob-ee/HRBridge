@@ -48,6 +48,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var measuring by remember { mutableStateOf(false) }
     var measuredHr by remember { mutableStateOf<Int?>(null) }
+    var noStrapData by remember { mutableStateOf(false) }
 
     ScalingLazyColumn(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -130,6 +131,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             val chipLabel = when {
                 measuring -> "Measuring… (60s)"
+                noStrapData -> "No strap data"
                 measuredHr != null -> "Rest HR: $measuredHr bpm"
                 settings.restingHr != null -> "Rest HR: ${settings.restingHr} bpm"
                 else -> "Measure resting HR"
@@ -141,7 +143,12 @@ fun SettingsScreen(
                         measuring = true
                         scope.launch {
                             val result = onMeasureResting()
-                            measuredHr = result
+                            if (result > 0) {
+                                measuredHr = result
+                                noStrapData = false
+                            } else {
+                                noStrapData = true
+                            }
                             measuring = false
                         }
                     }
