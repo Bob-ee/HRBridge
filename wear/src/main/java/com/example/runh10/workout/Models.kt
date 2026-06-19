@@ -1,5 +1,7 @@
 package com.example.runh10.workout
 
+import com.example.runh10.shared.model.Split
+
 /** A single Heart Rate Measurement notification parsed from the H10 (0x2A37). */
 data class HrSample(
     val bpm: Int,
@@ -39,4 +41,17 @@ data class UiState(
     val lon: Double? = null,
     val elapsedSec: Long = 0,
     val exerciseState: String = "—",
+    val movingSec: Long = 0,
+    val paused: Boolean = false,
+    val runState: RunState = RunState.WARMUP,
+    val warmupDistanceMeters: Double? = null,
+    val rollingPaceMps: Double? = null,
+    val avgPaceMps: Double? = null,
+    val currentLapPaceMps: Double? = null,
+    val kcal: Double? = null,
+    val cadenceSpm: Double? = null,
+    val hrZone: Int? = null,
+    val zoneEdges: List<Int> = emptyList(),
+    val gpsLocked: Boolean = false,
+    val splits: List<Split> = emptyList(),
 )

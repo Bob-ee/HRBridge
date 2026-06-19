@@ -3,9 +3,14 @@ package com.example.runh10.workout
 import android.content.Context
 import com.example.runh10.ble.HeartRateBleClient
 import com.example.runh10.data.DevicePrefs
+import com.example.runh10.data.RunSettings
+import com.example.runh10.data.SettingsStore
+import com.example.runh10.data.effectiveMaxHr
 import com.example.runh10.exercise.ExerciseClientManager
 import com.example.runh10.session.SessionRecorder
 import com.example.runh10.session.SessionStore
+import com.example.runh10.shared.model.Split
+import com.example.runh10.zones.ZoneCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +36,7 @@ object WorkoutController {
     private lateinit var devicePrefs: DevicePrefs
     private lateinit var store: SessionStore
     private lateinit var recorder: SessionRecorder
+    private lateinit var settingsStore: SettingsStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val running = MutableStateFlow(false)
@@ -56,6 +62,18 @@ object WorkoutController {
         }
     }
 
+    // Phase-2 logic units — re-instantiated on beginRun() for a fresh run.
+    private var clock = RunClock()
+    private var classifier = MotionClassifier()
+    private var stateMachine = RunStateMachine()
+    private var splitTracker = SplitTracker()
+    private var rollingPace = RollingPace()
+
+    @Volatile private var zoneCalc: ZoneCalculator? = null
+
+    private val _splits = mutableListOf<Split>()
+    private var warmupDistanceMeters: Double? = null
+
     lateinit var uiState: StateFlow<UiState>
         private set
 
@@ -73,6 +91,7 @@ object WorkoutController {
         devicePrefs = DevicePrefs(ctx)
         store = SessionStore(ctx)
         recorder = SessionRecorder(scope, store)
+        settingsStore = SettingsStore(ctx)
         scope.launch { store.recoverOrphans() }
 
         // Mirror persisted device into rememberedDevice StateFlow.
@@ -95,6 +114,15 @@ object WorkoutController {
             }
         }
 
+        // Keep ZoneCalculator in sync with user settings.
+        scope.launch {
+            settingsStore.settings.collect { s: RunSettings ->
+                zoneCalc = s.effectiveMaxHr()?.let { mx ->
+                    s.restingHr?.let { r -> ZoneCalculator(mx, r) }
+                }
+            }
+        }
+
         val merged = combine(
             ble.hr, ble.state, exercise.metrics, running, startTime,
         ) { hr, bleState, metrics, isRunning, start ->
@@ -103,18 +131,70 @@ object WorkoutController {
 
         uiState = combine(merged, ticker) { m, now ->
             val elapsed = if (m.running && m.start > 0L) (now - m.start) / 1000 else 0L
+            val distance = m.metrics.distanceMeters
+            val bpm = m.hr?.bpm
+
+            // Phase-2 logic — only driven when a run is active.
+            // The scope is Main.immediate (single-threaded), so mutations below are safe.
+            if (m.running) {
+                val motion = classifier.feed(m.metrics.cadenceSpm, m.metrics.speedMps, now)
+                val ev = stateMachine.onMotion(motion)
+                when (ev) {
+                    RunEvent.RUN_DETECTED -> {
+                        warmupDistanceMeters = distance
+                    }
+                    RunEvent.AUTO_PAUSED, RunEvent.MANUAL_PAUSED -> clock.pause()
+                    RunEvent.AUTO_RESUMED, RunEvent.RESUMED -> clock.resume()
+                    null -> Unit
+                }
+
+                rollingPace.add(now, distance ?: 0.0)
+
+                if (stateMachine.state != RunState.WARMUP) {
+                    val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
+                    splitTracker.onSample(runDist, clock.movingMs(), bpm, m.metrics.altitude)
+                        ?.let { _splits.add(it) }
+                }
+            }
+
+            val currentZoneCalc = zoneCalc
+            val hrZone = if (bpm != null) currentZoneCalc?.zoneFor(bpm) else null
+            val zoneEdges = currentZoneCalc?.edges ?: emptyList()
+            // GPS status string confirmed/tuned on-device in Task 17
+            val gpsLocked = m.metrics.gps.equals("ACQUIRED", ignoreCase = true) ||
+                m.metrics.gps.contains("ACTIVE", ignoreCase = true)
+
+            val movingMs = clock.movingMs()
+            val avgPaceMps = distance?.let { d ->
+                if (movingMs > 0) d / (movingMs / 1000.0) else null
+            }
+
             UiState(
                 running = m.running,
                 hrState = m.bleState.name,
-                bpm = m.hr?.bpm,
+                bpm = bpm,
                 rrMs = m.hr?.rrMs ?: emptyList(),
-                distanceMeters = m.metrics.distanceMeters,
+                distanceMeters = distance,
                 speedMps = m.metrics.speedMps,
                 gps = m.metrics.gps,
                 lat = m.metrics.lat,
                 lon = m.metrics.lon,
                 elapsedSec = elapsed,
                 exerciseState = m.metrics.exerciseState,
+                movingSec = movingMs / 1000,
+                paused = stateMachine.state == RunState.AUTO_PAUSED ||
+                    stateMachine.state == RunState.MANUAL_PAUSED,
+                runState = stateMachine.state,
+                warmupDistanceMeters = warmupDistanceMeters,
+                rollingPaceMps = rollingPace.paceMps(),
+                avgPaceMps = avgPaceMps,
+                currentLapPaceMps = null, // lap pace populated when SplitTracker lap closes
+                kcal = null,              // calorie computation reserved for a future task
+                cadenceSpm = m.metrics.cadenceSpm,
+                hrZone = hrZone,
+                zoneEdges = zoneEdges,
+                gpsLocked = gpsLocked,
+                splits = _splits.toList(),
             )
         }.stateIn(scope, SharingStarted.Eagerly, UiState())
     }
@@ -145,18 +225,51 @@ object WorkoutController {
     /**
      * Begin-run: flips [running] to true, records the start timestamp, and issues an
      * async [ExerciseClientManager.start] to begin the Health Services exercise session.
-     * The foreground service and wake lock are already held from the [connectStrap] /
-     * ACTION_CONNECT step. A session recorder will be wired in here in Task 8.
+     * Re-instantiates all stateful logic units so a second run starts clean.
      * Must only be called AFTER connectStrap() has established (or is establishing) a link.
      */
     fun beginRun() {
+        // Fresh logic units for this run — no state carries over from a prior run.
+        clock = RunClock()
+        classifier = MotionClassifier()
+        stateMachine = RunStateMachine()
+        splitTracker = SplitTracker()
+        rollingPace = RollingPace()
+        _splits.clear()
+        warmupDistanceMeters = null
+
+        clock.start()
         startTime.value = System.currentTimeMillis()
         running.value = true
         scope.launch { runCatching { exercise.start() } }
         scope.launch { recorder.start(ble.hr, exercise.metrics) }
     }
 
-    fun lap() { scope.launch { recorder.lap() } }
+    fun lap() {
+        val distance = uiState.value.distanceMeters
+        val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
+        val bpm = uiState.value.bpm
+        val split = splitTracker.lap(runDist, clock.movingMs(), bpm, null)
+        _splits.add(split)
+        scope.launch { recorder.lap() }
+    }
+
+    fun manualPause() {
+        stateMachine.manualPause()
+        clock.pause()
+    }
+
+    fun manualResume() {
+        stateMachine.manualResume()
+        clock.resume()
+    }
+
+    fun startNow() {
+        val ev = stateMachine.startNow()
+        if (ev == RunEvent.RUN_DETECTED) {
+            warmupDistanceMeters = uiState.value.distanceMeters
+        }
+    }
 
     fun forgetDevice() {
         _pendingDevice.value = null
