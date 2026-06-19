@@ -493,30 +493,6 @@ private fun MetricCompact(
     }
 }
 
-// Keep the original Metric composable for any existing callers (PrepScreen debug rows etc.)
-@Composable
-private fun Metric(label: String, value: String, sub: String?) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text = label, fontSize = 13.sp, color = MaterialTheme.colors.onBackground)
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                text = value,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colors.onSurface,
-            )
-            if (sub != null) {
-                Text(text = sub, fontSize = 10.sp, color = MaterialTheme.colors.onBackground)
-            }
-        }
-    }
-}
 
 internal fun formatElapsed(sec: Long): String {
     val m = sec / 60

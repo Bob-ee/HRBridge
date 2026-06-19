@@ -42,7 +42,6 @@ data class UiState(
     val elapsedSec: Long = 0,
     val exerciseState: String = "—",
     val movingSec: Long = 0,
-    val paused: Boolean = false,
     val runState: RunState = RunState.WARMUP,
     val warmupDistanceMeters: Double? = null,
     val rollingPaceMps: Double? = null,

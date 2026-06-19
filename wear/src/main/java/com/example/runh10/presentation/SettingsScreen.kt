@@ -67,25 +67,30 @@ fun SettingsScreen(
         // Age stepper
         item {
             Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Age: ${settings.age ?: "—"}",
-                fontSize = 13.sp,
-                color = MaterialTheme.colors.onBackground,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            androidx.compose.foundation.layout.Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Button(
-                    onClick = { onAge(maxOf(1, (settings.age ?: 30) - 1)) },
-                    modifier = Modifier.size(36.dp),
-                    colors = ButtonDefaults.secondaryButtonColors(),
-                ) { Text("−") }
-                Button(
-                    onClick = { onAge((settings.age ?: 30) + 1) },
-                    modifier = Modifier.size(36.dp),
-                    colors = ButtonDefaults.secondaryButtonColors(),
-                ) { Text("+") }
+                Text(
+                    text = "Age: ${settings.age ?: "—"}",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colors.onBackground,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = { onAge(maxOf(1, (settings.age ?: 30) - 1)) },
+                        modifier = Modifier.size(36.dp),
+                        colors = ButtonDefaults.secondaryButtonColors(),
+                    ) { Text("−") }
+                    Button(
+                        onClick = { onAge((settings.age ?: 30) + 1) },
+                        modifier = Modifier.size(36.dp),
+                        colors = ButtonDefaults.secondaryButtonColors(),
+                    ) { Text("+") }
+                }
             }
         }
 
@@ -98,31 +103,36 @@ fun SettingsScreen(
                 ageEstimate != null -> "~$ageEstimate (est.)"
                 else -> "—"
             }
-            Text(
-                text = "Max HR: $maxHrDisplay",
-                fontSize = 13.sp,
-                color = MaterialTheme.colors.onBackground,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            androidx.compose.foundation.layout.Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Button(
-                    onClick = {
-                        val current = settings.maxHr ?: (settings.age?.let { 220 - it } ?: 180)
-                        onMaxHr(maxOf(100, current - 1))
-                    },
-                    modifier = Modifier.size(36.dp),
-                    colors = ButtonDefaults.secondaryButtonColors(),
-                ) { Text("−") }
-                Button(
-                    onClick = {
-                        val current = settings.maxHr ?: (settings.age?.let { 220 - it } ?: 180)
-                        onMaxHr(current + 1)
-                    },
-                    modifier = Modifier.size(36.dp),
-                    colors = ButtonDefaults.secondaryButtonColors(),
-                ) { Text("+") }
+                Text(
+                    text = "Max HR: $maxHrDisplay",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colors.onBackground,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = {
+                            val current = settings.maxHr ?: (settings.age?.let { 220 - it } ?: 180)
+                            onMaxHr(maxOf(100, current - 1))
+                        },
+                        modifier = Modifier.size(36.dp),
+                        colors = ButtonDefaults.secondaryButtonColors(),
+                    ) { Text("−") }
+                    Button(
+                        onClick = {
+                            val current = settings.maxHr ?: (settings.age?.let { 220 - it } ?: 180)
+                            onMaxHr(current + 1)
+                        },
+                        modifier = Modifier.size(36.dp),
+                        colors = ButtonDefaults.secondaryButtonColors(),
+                    ) { Text("+") }
+                }
             }
         }
 

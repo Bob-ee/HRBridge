@@ -205,8 +205,6 @@ object WorkoutController {
                 elapsedSec = elapsed,
                 exerciseState = m.metrics.exerciseState,
                 movingSec = movingMs / 1000,
-                paused = stateMachine.state == RunState.AUTO_PAUSED ||
-                    stateMachine.state == RunState.MANUAL_PAUSED,
                 runState = stateMachine.state,
                 warmupDistanceMeters = warmupDistanceMeters,
                 rollingPaceMps = rollingPace.paceMps(),
@@ -310,6 +308,7 @@ object WorkoutController {
     }
 
     fun forgetDevice() {
+        ble.disconnect()
         _pendingDevice.value = null
         scope.launch {
             devicePrefs.clear()

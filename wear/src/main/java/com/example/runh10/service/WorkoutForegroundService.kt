@@ -146,7 +146,7 @@ class WorkoutForegroundService : Service() {
             WorkoutController.uiState.collect { ui ->
                 val activity = ongoingActivity ?: return@collect
                 val distText = formatMiles(ui.distanceMeters)
-                val timeText = formatElapsed(ui.elapsedSec)
+                val timeText = formatElapsed(ui.movingSec)
                 val status = Status.Builder()
                     .addTemplate("#dist# • #time#")
                     .addPart("dist", Status.TextPart(distText))
