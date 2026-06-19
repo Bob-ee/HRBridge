@@ -4,6 +4,8 @@ import android.content.Context
 import com.example.runh10.ble.HeartRateBleClient
 import com.example.runh10.data.DevicePrefs
 import com.example.runh10.exercise.ExerciseClientManager
+import com.example.runh10.session.SessionRecorder
+import com.example.runh10.session.SessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +29,8 @@ object WorkoutController {
     private lateinit var ble: HeartRateBleClient
     private lateinit var exercise: ExerciseClientManager
     private lateinit var devicePrefs: DevicePrefs
+    private lateinit var store: SessionStore
+    private lateinit var recorder: SessionRecorder
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val running = MutableStateFlow(false)
@@ -58,6 +62,8 @@ object WorkoutController {
     val devices: StateFlow<List<ScanDevice>> get() = ble.devices
     val bleState: StateFlow<HeartRateBleClient.State> get() = ble.state
 
+    val sessions get() = store.observeAll()
+
     fun init(appContext: Context) {
         if (initialized) return
         initialized = true
@@ -65,6 +71,9 @@ object WorkoutController {
         ble = HeartRateBleClient(ctx)
         exercise = ExerciseClientManager(ctx)
         devicePrefs = DevicePrefs(ctx)
+        store = SessionStore(ctx)
+        recorder = SessionRecorder(scope, store)
+        scope.launch { store.recoverOrphans() }
 
         // Mirror persisted device into rememberedDevice StateFlow.
         scope.launch {
@@ -144,7 +153,10 @@ object WorkoutController {
         startTime.value = System.currentTimeMillis()
         running.value = true
         scope.launch { runCatching { exercise.start() } }
+        scope.launch { recorder.start(ble.hr, exercise.metrics) }
     }
+
+    fun lap() { scope.launch { recorder.lap() } }
 
     fun forgetDevice() {
         _pendingDevice.value = null
@@ -162,6 +174,7 @@ object WorkoutController {
         running.value = false
         ble.disconnect()
         scope.launch { exercise.stop() }
+        scope.launch { recorder.stop() }
     }
 
     private data class Merged(

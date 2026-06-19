@@ -1,0 +1,66 @@
+package com.example.runh10.session
+
+import com.example.runh10.shared.model.HrRow
+import com.example.runh10.shared.model.LapRow
+import com.example.runh10.shared.model.LocRow
+import com.example.runh10.shared.model.RrRow
+import com.example.runh10.shared.model.SampleRow
+import com.example.runh10.shared.model.SessionMeta
+import com.example.runh10.shared.serial.NdjsonSerializer
+import com.example.runh10.workout.ExerciseMetrics
+import com.example.runh10.workout.HrSample
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
+import java.io.BufferedWriter
+import java.time.ZoneId
+
+class SessionRecorder(
+    private val scope: CoroutineScope,
+    private val store: SessionStore,
+) {
+    private var writer: BufferedWriter? = null
+    private var meta: SessionMeta? = null
+    private val jobs = mutableListOf<Job>()
+    val activeSessionId: String? get() = meta?.sessionId
+
+    suspend fun start(
+        hr: StateFlow<HrSample?>,
+        metrics: StateFlow<ExerciseMetrics>,
+    ): SessionMeta {
+        val m = store.createSession(ZoneId.systemDefault().id)
+        meta = m
+        writer = store.fileFor(m.sessionId).bufferedWriter()
+        jobs += scope.launch {
+            hr.filterNotNull().collect { s ->
+                writeLine(HrRow(ts = s.timestamp, bpm = s.bpm))
+                s.rrMs.forEach { rr -> writeLine(RrRow(ts = s.timestamp, rr = rr)) }
+            }
+        }
+        jobs += scope.launch {
+            metrics.collect { mx ->
+                val ts = System.currentTimeMillis()
+                if (mx.lat != null && mx.lon != null) {
+                    writeLine(LocRow(ts = ts, lat = mx.lat, lon = mx.lon, alt = mx.altitude, spd = mx.speedMps, dist = mx.distanceMeters))
+                }
+            }
+        }
+        return m
+    }
+
+    @Synchronized private fun writeLine(row: SampleRow) {
+        val w = writer ?: return
+        w.write(NdjsonSerializer.encode(row)); w.newLine(); w.flush()
+    }
+
+    suspend fun lap() { writeLine(LapRow(ts = System.currentTimeMillis())) }
+
+    suspend fun stop() {
+        jobs.forEach { it.cancel() }; jobs.clear()
+        writer?.flush(); writer?.close(); writer = null
+        meta?.let { store.finalize(it.sessionId, System.currentTimeMillis()) }
+        meta = null
+    }
+}
