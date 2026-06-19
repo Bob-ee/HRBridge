@@ -36,12 +36,25 @@ class WorkoutForegroundService : Service() {
                 return START_NOT_STICKY
             }
 
-            ACTION_START -> {
+            ACTION_CONNECT -> {
+                // Connect-only: start foreground (wake-lock + notification) and
+                // establish the BLE link, but do NOT start the exercise session.
+                // The Prep screen stays visible until the user taps Start.
                 val address = intent.getStringExtra(EXTRA_DEVICE) ?: return START_NOT_STICKY
+                val autoConnect = intent.getBooleanExtra(EXTRA_AUTO_CONNECT, false)
                 startAsForeground()
                 acquireWakeLock()
                 WorkoutController.init(applicationContext)
-                WorkoutController.start(address)
+                WorkoutController.connectStrap(address, autoConnect = autoConnect)
+            }
+
+            ACTION_START -> {
+                // Begin-run: strap is already connected (or connecting). Just start
+                // the exercise session / recorder. FGS + wake-lock already held from
+                // the prior ACTION_CONNECT; calling startAsForeground() again is safe
+                // (idempotent on Android) but guard to avoid duplicate notifications.
+                WorkoutController.init(applicationContext)
+                WorkoutController.beginRun()
             }
         }
         return START_STICKY
@@ -112,9 +125,11 @@ class WorkoutForegroundService : Service() {
     }
 
     companion object {
+        const val ACTION_CONNECT = "com.example.runh10.action.CONNECT"
         const val ACTION_START = "com.example.runh10.action.START"
         const val ACTION_STOP = "com.example.runh10.action.STOP"
         const val EXTRA_DEVICE = "device_address"
+        const val EXTRA_AUTO_CONNECT = "auto_connect"
         private const val CHANNEL_ID = "workout"
         private const val NOTIF_ID = 1
         private const val WAKE_LOCK_TIMEOUT_MS = 4L * 60 * 60 * 1000 // 4h safety cap

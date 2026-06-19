@@ -54,6 +54,7 @@ fun WorkoutFlow(
     onScan: () -> Unit,
     onPick: (String) -> Unit,
     onForget: () -> Unit,
+    onStart: () -> Unit,
     onEnd: () -> Unit,
 ) {
     if (ui.running) {
@@ -66,6 +67,7 @@ fun WorkoutFlow(
             onScan = onScan,
             onPick = onPick,
             onForget = onForget,
+            onStart = onStart,
         )
     }
 }
@@ -78,9 +80,13 @@ private fun PrepScreen(
     onScan: () -> Unit,
     onPick: (String) -> Unit,
     onForget: () -> Unit,
+    onStart: () -> Unit,
 ) {
     if (remembered != null) {
-        // Remembered device: show connecting status + change-strap affordance.
+        // Remembered or just-picked device: show strap status, a big Start button
+        // (enabled only once CONNECTED), and a secondary Change strap control.
+        // The Prep screen persists here until the user taps Start — the run does
+        // NOT begin until they do so.
         val isConnected = ui.hrState == "CONNECTED"
         Column(
             modifier = Modifier
@@ -96,6 +102,11 @@ private fun PrepScreen(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colors.primary,
             )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onStart,
+                enabled = isConnected,
+            ) { Text("Start") }
             Spacer(Modifier.height(8.dp))
             Chip(
                 modifier = Modifier

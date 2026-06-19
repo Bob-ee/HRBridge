@@ -35,6 +35,15 @@ object WorkoutController {
     private val _rememberedDevice = MutableStateFlow<ScanDevice?>(null)
     val rememberedDevice: StateFlow<ScanDevice?> get() = _rememberedDevice
 
+    /**
+     * Tracks the device currently being connected to (set immediately in connectStrap,
+     * cleared in forgetDevice). Non-null whenever we are on the Prep screen with a
+     * device selected — covers both the "just picked from scan" case (before DataStore
+     * saves the address) and the "remembered on relaunch" case.
+     */
+    private val _pendingDevice = MutableStateFlow<ScanDevice?>(null)
+    val pendingDevice: StateFlow<ScanDevice?> get() = _pendingDevice
+
     /** 1 Hz tick so elapsed time advances even when no sample arrives. */
     private val ticker = flow {
         while (true) {
@@ -105,21 +114,44 @@ object WorkoutController {
 
     fun stopScan() = ble.stopScan()
 
-    fun start(deviceAddress: String) {
-        val isRemembered = deviceAddress == _rememberedDevice.value?.address
-        // Look up name from scan list or remembered device.
+    /**
+     * Connect-only: establishes the BLE link so live HR appears on the Prep screen,
+     * but does NOT start the run (running stays false, exercise/FGS not started).
+     * Call this when the user picks a device from the scan list, or on remembered-strap
+     * auto-connect at launch.
+     */
+    fun connectStrap(deviceAddress: String, autoConnect: Boolean) {
         val deviceName = ble.devices.value.find { it.address == deviceAddress }?.name
             ?: _rememberedDevice.value?.takeIf { it.address == deviceAddress }?.name
         ble.setTargetName(deviceName)
-        ble.connect(deviceAddress, autoConnect = isRemembered)
+        // Track this device immediately so the Prep screen renders before DataStore saves.
+        _pendingDevice.value = ScanDevice(
+            name = deviceName ?: "Polar H10",
+            address = deviceAddress,
+            rssi = ble.devices.value.find { it.address == deviceAddress }?.rssi ?: 0,
+        )
+        ble.connect(deviceAddress, autoConnect = autoConnect)
+    }
+
+    /**
+     * Begin-run: sets running=true and starts the exercise session + recorder.
+     * Must only be called AFTER connectStrap() has established (or is establishing) a link.
+     */
+    fun beginRun() {
         startTime.value = System.currentTimeMillis()
         running.value = true
         scope.launch { runCatching { exercise.start() } }
     }
 
     fun forgetDevice() {
-        scope.launch { devicePrefs.clear() }
-        _rememberedDevice.value = null
+        _pendingDevice.value = null
+        scope.launch {
+            devicePrefs.clear()
+            // Null the in-memory value only after the DataStore write completes,
+            // so a process death between the two operations cannot leave the old
+            // MAC persisted while the UI has already cleared it.
+            _rememberedDevice.value = null
+        }
         ble.startScan()
     }
 

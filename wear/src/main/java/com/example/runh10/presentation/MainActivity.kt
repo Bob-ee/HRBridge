@@ -69,23 +69,26 @@ class MainActivity : ComponentActivity() {
                         val ui by WorkoutController.uiState.collectAsStateWithLifecycle()
                         val devices by WorkoutController.devices.collectAsStateWithLifecycle()
                         val remembered by WorkoutController.rememberedDevice.collectAsStateWithLifecycle()
+                        val pendingDevice by WorkoutController.pendingDevice.collectAsStateWithLifecycle()
 
-                        // Auto-connect to the remembered device on first composition.
-                        var autoStarted by rememberSaveable { mutableStateOf(false) }
+                        // Auto-connect to the remembered strap on first composition
+                        // (connect-only — does NOT start the run).
+                        var autoConnected by rememberSaveable { mutableStateOf(false) }
                         LaunchedEffect(remembered) {
-                            if (!autoStarted && remembered != null) {
-                                autoStarted = true
-                                startWorkout(remembered!!.address)
+                            if (!autoConnected && remembered != null) {
+                                autoConnected = true
+                                connectStrap(remembered!!.address, autoConnect = true)
                             }
                         }
 
                         WorkoutFlow(
                             ui = ui,
                             devices = devices,
-                            remembered = remembered,
+                            remembered = pendingDevice,
                             onScan = { WorkoutController.startScan() },
-                            onPick = { address -> startWorkout(address) },
+                            onPick = { address -> connectStrap(address, autoConnect = false) },
                             onForget = { WorkoutController.forgetDevice() },
+                            onStart = { beginRun() },
                             onEnd = { endWorkout() },
                         )
                     }
@@ -94,10 +97,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startWorkout(address: String) {
+    private fun connectStrap(address: String, autoConnect: Boolean) {
+        val intent = Intent(this, WorkoutForegroundService::class.java).apply {
+            action = WorkoutForegroundService.ACTION_CONNECT
+            putExtra(WorkoutForegroundService.EXTRA_DEVICE, address)
+            putExtra(WorkoutForegroundService.EXTRA_AUTO_CONNECT, autoConnect)
+        }
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    private fun beginRun() {
         val intent = Intent(this, WorkoutForegroundService::class.java).apply {
             action = WorkoutForegroundService.ACTION_START
-            putExtra(WorkoutForegroundService.EXTRA_DEVICE, address)
         }
         ContextCompat.startForegroundService(this, intent)
     }
