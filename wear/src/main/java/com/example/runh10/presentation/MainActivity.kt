@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.material.MaterialTheme
 import com.example.runh10.presentation.theme.RunH10Theme
 import com.example.runh10.service.WorkoutForegroundService
+import com.example.runh10.workout.RunState
 import com.example.runh10.workout.WorkoutController
 
 class MainActivity : ComponentActivity() {
@@ -90,6 +91,14 @@ class MainActivity : ComponentActivity() {
                             onForget = { WorkoutController.forgetDevice() },
                             onStart = { beginRun() },
                             onEnd = { endWorkout() },
+                            onPauseToggle = {
+                                if (ui.runState == RunState.MANUAL_PAUSED || ui.runState == RunState.AUTO_PAUSED)
+                                    WorkoutController.manualResume()
+                                else
+                                    WorkoutController.manualPause()
+                            },
+                            onLap = { WorkoutController.lap() },
+                            onStartNow = { WorkoutController.startNow() },
                         )
                     }
                 }
