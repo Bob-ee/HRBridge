@@ -1,6 +1,7 @@
 package com.example.runh10.presentation
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -16,16 +17,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.material.MaterialTheme
+import com.example.runh10.data.SettingsStore
 import com.example.runh10.presentation.theme.RunH10Theme
 import com.example.runh10.service.WorkoutForegroundService
 import com.example.runh10.workout.RunState
 import com.example.runh10.workout.WorkoutController
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -47,6 +51,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WorkoutController.init(applicationContext)
+        val settingsStore = SettingsStore(applicationContext)
 
         setContent {
             RunH10Theme {
@@ -71,6 +76,11 @@ class MainActivity : ComponentActivity() {
                         val devices by WorkoutController.devices.collectAsStateWithLifecycle()
                         val remembered by WorkoutController.rememberedDevice.collectAsStateWithLifecycle()
                         val pendingDevice by WorkoutController.pendingDevice.collectAsStateWithLifecycle()
+                        val settings by settingsStore.settings.collectAsStateWithLifecycle(
+                            initialValue = com.example.runh10.data.RunSettings()
+                        )
+
+                        val scope = rememberCoroutineScope()
 
                         // Auto-connect to the remembered strap on first composition
                         // (connect-only — does NOT start the run).
@@ -86,6 +96,7 @@ class MainActivity : ComponentActivity() {
                             ui = ui,
                             devices = devices,
                             remembered = pendingDevice,
+                            settings = settings,
                             onScan = { WorkoutController.startScan() },
                             onPick = { address -> connectStrap(address, autoConnect = false) },
                             onForget = { WorkoutController.forgetDevice() },
@@ -99,6 +110,18 @@ class MainActivity : ComponentActivity() {
                             },
                             onLap = { WorkoutController.lap() },
                             onStartNow = { WorkoutController.startNow() },
+                            onAge = { v -> scope.launch { settingsStore.setAge(v) } },
+                            onMaxHr = { v -> scope.launch { settingsStore.setMaxHr(v) } },
+                            onMeasureResting = {
+                                val bpm = WorkoutController.measureRestingHr()
+                                if (bpm > 0) settingsStore.setRestingHr(bpm)
+                                bpm
+                            },
+                            onToggleAnnounce = { v -> scope.launch { settingsStore.setAnnounce(v) } },
+                            onToggleAnnounceSplit = { v -> scope.launch { settingsStore.setAnnounceSplitTime(v) } },
+                            onToggleAnnouncePace = { v -> scope.launch { settingsStore.setAnnouncePace(v) } },
+                            onToggleAnnounceZone = { v -> scope.launch { settingsStore.setAnnounceHrZone(v) } },
+                            onToggleAutoPause = { v -> scope.launch { settingsStore.setAutoPause(v) } },
                         )
                     }
                 }

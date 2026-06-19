@@ -16,14 +16,17 @@ import com.example.runh10.zones.ZoneCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Process-scoped owner of the live run. Held as a singleton (not in the Activity)
@@ -217,6 +220,20 @@ object WorkoutController {
                 splits = _splits.toList(),
             )
         }.stateIn(scope, SharingStarted.Eagerly, UiState())
+    }
+
+    suspend fun measureRestingHr(): Int {
+        val readings = mutableListOf<Int>()
+        withTimeoutOrNull(60_000L) {
+            ble.hr.filterNotNull().collect { sample ->
+                readings += sample.bpm
+                if (readings.size >= 40) cancel()
+            }
+        }
+        if (readings.isEmpty()) return 0
+        val sorted = readings.sorted()
+        val count = maxOf(1, sorted.size / 5)
+        return sorted.take(count).average().toInt()
     }
 
     fun startScan() = ble.startScan()

@@ -17,6 +17,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +34,7 @@ import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.example.runh10.data.RunSettings
 import com.example.runh10.presentation.components.ZoneRing
 import com.example.runh10.presentation.components.zoneColor
 import com.example.runh10.workout.RunState
@@ -62,6 +67,7 @@ fun WorkoutFlow(
     ui: UiState,
     devices: List<ScanDevice>,
     remembered: ScanDevice?,
+    settings: RunSettings,
     onScan: () -> Unit,
     onPick: (String) -> Unit,
     onForget: () -> Unit,
@@ -70,17 +76,38 @@ fun WorkoutFlow(
     onPauseToggle: () -> Unit,
     onLap: () -> Unit,
     onStartNow: () -> Unit,
+    onAge: (Int) -> Unit,
+    onMaxHr: (Int) -> Unit,
+    onMeasureResting: suspend () -> Int,
+    onToggleAnnounce: (Boolean) -> Unit,
+    onToggleAnnounceSplit: (Boolean) -> Unit,
+    onToggleAnnouncePace: (Boolean) -> Unit,
+    onToggleAnnounceZone: (Boolean) -> Unit,
+    onToggleAutoPause: (Boolean) -> Unit,
 ) {
-    if (ui.running) {
-        ActiveScreen(
+    var showSettings by remember { mutableStateOf(false) }
+
+    when {
+        ui.running -> ActiveScreen(
             ui = ui,
             onPauseToggle = onPauseToggle,
             onLap = onLap,
             onStartNow = onStartNow,
             onEnd = onEnd,
         )
-    } else {
-        PrepScreen(
+        showSettings -> SettingsScreen(
+            settings = settings,
+            onAge = onAge,
+            onMaxHr = onMaxHr,
+            onMeasureResting = onMeasureResting,
+            onToggleAnnounce = onToggleAnnounce,
+            onToggleAnnounceSplit = onToggleAnnounceSplit,
+            onToggleAnnouncePace = onToggleAnnouncePace,
+            onToggleAnnounceZone = onToggleAnnounceZone,
+            onToggleAutoPause = onToggleAutoPause,
+            onBack = { showSettings = false },
+        )
+        else -> PrepScreen(
             ui = ui,
             devices = devices,
             remembered = remembered,
@@ -88,6 +115,7 @@ fun WorkoutFlow(
             onPick = onPick,
             onForget = onForget,
             onStart = onStart,
+            onSettings = { showSettings = true },
         )
     }
 }
@@ -101,6 +129,7 @@ private fun PrepScreen(
     onPick: (String) -> Unit,
     onForget: () -> Unit,
     onStart: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     if (remembered != null) {
         // Remembered or just-picked device: show strap status, a big Start button
@@ -135,6 +164,14 @@ private fun PrepScreen(
                 onClick = onForget,
                 colors = ChipDefaults.secondaryChipColors(),
                 label = { Text("Change strap") },
+            )
+            Chip(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                onClick = onSettings,
+                colors = ChipDefaults.secondaryChipColors(),
+                label = { Text("Settings") },
             )
         }
     } else {
@@ -174,6 +211,15 @@ private fun PrepScreen(
                     )
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Chip(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                onClick = onSettings,
+                colors = ChipDefaults.secondaryChipColors(),
+                label = { Text("Settings") },
+            )
         }
     }
 }

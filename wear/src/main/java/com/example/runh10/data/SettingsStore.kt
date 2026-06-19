@@ -49,6 +49,9 @@ class SettingsStore(private val context: Context) {
     suspend fun setMaxHr(v: Int) = context.settingsDataStore.edit { it[K.MAX] = v }
     suspend fun setRestingHr(v: Int) = context.settingsDataStore.edit { it[K.REST] = v }
     suspend fun setAnnounce(v: Boolean) = context.settingsDataStore.edit { it[K.ANN] = v }
+    suspend fun setAnnounceSplitTime(v: Boolean) = context.settingsDataStore.edit { it[K.ANN_SPLIT] = v }
+    suspend fun setAnnouncePace(v: Boolean) = context.settingsDataStore.edit { it[K.ANN_PACE] = v }
+    suspend fun setAnnounceHrZone(v: Boolean) = context.settingsDataStore.edit { it[K.ANN_ZONE] = v }
     suspend fun setAutoPause(v: Boolean) = context.settingsDataStore.edit { it[K.AUTOPAUSE] = v }
     suspend fun clear() = context.settingsDataStore.edit { it.clear() }
 }
