@@ -59,7 +59,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val ambientObserver = AmbientLifecycleObserver(this, ambientCallback)
+    // Assigned in onCreate (not a field initializer) so the Activity is fully
+    // constructed before it is handed to the observer.
+    private lateinit var ambientObserver: AmbientLifecycleObserver
 
     private val requiredPermissions: Array<String> = buildList {
         add(Manifest.permission.BLUETOOTH_SCAN)
@@ -78,6 +80,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ambientObserver = AmbientLifecycleObserver(this, ambientCallback)
         lifecycle.addObserver(ambientObserver)
         WorkoutController.init(applicationContext)
         val settingsStore = SettingsStore(applicationContext)

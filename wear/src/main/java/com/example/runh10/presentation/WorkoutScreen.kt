@@ -378,6 +378,11 @@ private fun AmbientActiveScreen(ui: UiState, ambientState: AmbientState) {
     // doesn't sit on the same pixels for the whole ambient session.
     val shift = if (ambientState.burnInProtection) 3.dp else 0.dp
 
+    // Low-bit ambient panels have a tiny color depth — restrict to pure white/gray
+    // (no fractional-luminance tones the panel can't reproduce cleanly).
+    val timeColor = if (ambientState.lowBitAmbient) Color.White else Color(0xFFBFBFBF)
+    val labelColor = if (ambientState.lowBitAmbient) Color.White else Color(0xFF666666)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -404,12 +409,12 @@ private fun AmbientActiveScreen(ui: UiState, ambientState: AmbientState) {
                 text = formatElapsed(ui.movingSec),
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFFBFBFBF),
+                color = timeColor,
             )
             Text(
                 text = "MOVING TIME",
                 fontSize = 9.sp,
-                color = Color(0xFF666666),
+                color = labelColor,
                 letterSpacing = 1.sp,
             )
 
