@@ -148,9 +148,8 @@ object WorkoutController {
                     null -> Unit
                 }
 
-                rollingPace.add(now, distance ?: 0.0)
-
                 if (stateMachine.state != RunState.WARMUP) {
+                    rollingPace.add(now, distance ?: 0.0)
                     val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
                     splitTracker.onSample(runDist, clock.movingMs(), bpm, m.metrics.altitude)
                         ?.let { _splits.add(it) }
@@ -246,6 +245,7 @@ object WorkoutController {
     }
 
     fun lap() {
+        if (stateMachine.state == RunState.WARMUP) return
         val distance = uiState.value.distanceMeters
         val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
         val bpm = uiState.value.bpm
@@ -260,8 +260,7 @@ object WorkoutController {
     }
 
     fun manualResume() {
-        stateMachine.manualResume()
-        clock.resume()
+        if (stateMachine.manualResume() != null) clock.resume()
     }
 
     fun startNow() {
