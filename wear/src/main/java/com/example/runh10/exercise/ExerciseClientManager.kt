@@ -45,7 +45,10 @@ class ExerciseClientManager(context: Context) {
                     speedMps = speed ?: it.speedMps,
                     lat = location?.latitude ?: it.lat,
                     lon = location?.longitude ?: it.lon,
-                    altitude = location?.altitude ?: it.altitude,
+                    // Health Services reports unavailable altitude as the sentinel
+                    // Double.MAX_VALUE (NOT null), so the ?: guard alone would record
+                    // that garbage. Treat the sentinel as absent → honest null.
+                    altitude = location?.altitude?.takeUnless { it == Double.MAX_VALUE } ?: it.altitude,
                     cadenceSpm = (cadence as? Number)?.toDouble() ?: it.cadenceSpm,
                     exerciseState = update.exerciseStateInfo.state.toString(),
                 )
@@ -62,6 +65,9 @@ class ExerciseClientManager(context: Context) {
 
         override fun onAvailabilityChanged(dataType: DataType<*, *>, availability: Availability) {
             if (availability is LocationAvailability) {
+                // Log the exact string so the gpsLocked predicate can be confirmed/tuned
+                // against real Health Services values during on-device acceptance.
+                Log.d(TAG, "LocationAvailability=$availability")
                 _metrics.update { it.copy(gps = availability.toString()) }
             }
         }
