@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.play.services.wearable)
     implementation(libs.health.connect.client)
+    implementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
