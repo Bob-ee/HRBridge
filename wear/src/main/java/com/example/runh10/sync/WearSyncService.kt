@@ -10,10 +10,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.cancel
 import android.net.Uri
+import android.util.Log
 
 class WearSyncService : WearableListenerService() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // SupervisorJob + handler: a GMS failure (e.g. BLE drop mid-transfer) logs instead of crashing the process.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, e -> Log.w("WearSyncService", "sync op failed", e) }
+    )
     private val store by lazy { SessionStore(applicationContext) }
     private val channelClient by lazy { Wearable.getChannelClient(applicationContext) }
     private val messageClient by lazy { Wearable.getMessageClient(applicationContext) }
@@ -44,6 +51,7 @@ class WearSyncService : WearableListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        scope.cancel()
         store.close()
     }
 }
