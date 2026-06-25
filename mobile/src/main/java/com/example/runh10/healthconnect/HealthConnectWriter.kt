@@ -136,6 +136,9 @@ class HealthConnectWriter(private val context: Context) {
 
         // HRV/RMSSD — one instantaneous record per surviving window
         rmssd.forEachIndexed { index, p ->
+            // HC requires heartRateVariabilityMillis in [1, 200]; an artifact-driven window can exceed
+            // 200ms — skip it (keep `index` stable so re-sync stays idempotent) rather than fail the run.
+            if (p.rmssdMs !in 1.0..200.0) return@forEachIndexed
             val t = Instant.ofEpochMilli(p.tsMs)
             records += HeartRateVariabilityRmssdRecord(
                 time = t, zoneOffset = zone.rules.getOffset(t),
