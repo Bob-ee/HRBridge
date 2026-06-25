@@ -53,7 +53,9 @@ class HealthConnectWriter(private val context: Context) {
         )
 
         val locs = samples.filterIsInstance<LocRow>().sortedBy { it.ts }
-        val hrs = samples.filterIsInstance<HrRow>().sortedBy { it.ts }
+        // HC rejects the whole HeartRateRecord if any sample's bpm is outside 1..300 (recordings can
+        // contain bpm=0 sensor dropouts) — drop implausible samples so one bad reading can't fail the run.
+        val hrs = samples.filterIsInstance<HrRow>().filter { it.bpm in 1..300 }.sortedBy { it.ts }
         val cals = samples.filterIsInstance<CalRow>().sortedBy { it.ts }
 
         val records = mutableListOf<Record>()
