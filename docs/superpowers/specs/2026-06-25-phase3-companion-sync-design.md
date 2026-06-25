@@ -84,8 +84,21 @@ WearableListenerService`:**
 ### Task 3 — Parser + RMSSD + HealthConnectWriter
 
 **`mobile/.../parse/SessionParser.kt`** — reuse `:shared` `NdjsonSerializer`; produce a `SessionBundle`
-(ordered samples + derived per-mile splits + start/end/zone). Tolerate gaps and a **truncated final line**
-(files are crash-resilient and may end mid-write).
+(ordered samples + start/end/zone, from the `SessionMeta` the watch sends alongside the file). Tolerate gaps
+and a **truncated final line** (files are crash-resilient and may end mid-write).
+
+> **Splits deferred to Phase 4 (refinement, 2026-06-25):** splits are computed in-memory on the watch
+> (`SplitTracker`) and are **not** written to the NDJSON, and moving-time is not recorded in the file.
+> Nothing in Phase 3 consumes splits — the Health Connect write uses route/HR/distance/speed directly, and
+> the bare sync console shows no splits. So the Phase 3 parser sets `SessionBundle.splits = emptyList()`;
+> re-deriving splits from samples is implemented in Phase 4 where the session-detail UI displays them.
+
+> **Wire transport of `SessionMeta` (refinement, 2026-06-25):** the `.ndjson` file holds only sample rows,
+> not the `SessionMeta` (which lives in the watch's Room store). The watch therefore sends the serialized
+> `SessionMeta` per session in its `request_unsynced` reply, so the phone has the sessionId, zone, and
+> start/end needed for Health Connect's zone offsets. `SessionMeta`/`SessionState` become `@Serializable`
+> in `:shared`, and a shared `SyncProtocol` holds the path/capability constants + the meta-list codec so
+> both sides share one wire definition.
 
 **`mobile/.../healthconnect/RmssdCalculator.kt`:**
 - Input: the ordered `RrRow` list from the bundle.
