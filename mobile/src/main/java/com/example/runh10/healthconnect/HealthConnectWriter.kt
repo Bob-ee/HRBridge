@@ -23,7 +23,6 @@ import com.example.runh10.shared.model.LocRow
 import com.example.runh10.shared.model.SessionBundle
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 
 class HealthConnectWriter(private val context: Context) {
 
@@ -44,8 +43,8 @@ class HealthConnectWriter(private val context: Context) {
         val end = Instant.ofEpochMilli(meta.endEpochMs ?: lastTs)
         val startOffset = zone.rules.getOffset(start)
         val endOffset = zone.rules.getOffset(end)
-        fun md() = Metadata.activelyRecorded(
-            clientRecordId = meta.sessionId,
+        fun md(clientRecordId: String = meta.sessionId) = Metadata.activelyRecorded(
+            clientRecordId = clientRecordId,
             clientRecordVersion = 1L,
             device = Device(type = Device.TYPE_WATCH),
         )
@@ -131,11 +130,11 @@ class HealthConnectWriter(private val context: Context) {
         }
 
         // HRV/RMSSD — one instantaneous record per surviving window
-        rmssd.forEach { p ->
+        rmssd.forEachIndexed { index, p ->
             val t = Instant.ofEpochMilli(p.tsMs)
             records += HeartRateVariabilityRmssdRecord(
                 time = t, zoneOffset = zone.rules.getOffset(t),
-                heartRateVariabilityMillis = p.rmssdMs, metadata = md(),
+                heartRateVariabilityMillis = p.rmssdMs, metadata = md("${meta.sessionId}_hrv_$index"),
             )
         }
 

@@ -17,7 +17,7 @@ Copy these verbatim into every task's mental checklist:
 - **Build:** `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` then `cd ~/AndroidStudioProjects/RunH10 && ./gradlew <task>`. `adb` = `/opt/homebrew/bin/adb`.
 - **Health Connect is PHONE-ONLY** (`androidx.health.connect:connect-client` 1.1.0). NEVER add it to `:wear`.
 - **Reuse `:shared`** (`SampleRow`, `SessionMeta`, `Split`, `SessionBundle`, `NdjsonSerializer`, new `SyncProtocol`). NEVER redefine the NDJSON schema or the wire protocol in `:mobile` or `:wear`.
-- **HC `Metadata`:** never the bare `Metadata(clientRecordId=…)` constructor (internal in 1.1.0 — won't compile). Use `Metadata.activelyRecorded(clientRecordId = sessionId, clientRecordVersion = 1L, device = Device(type = Device.TYPE_WATCH))` on **every** record. Same `clientRecordId` upserts → re-sync never duplicates.
+- **HC `Metadata`:** never the bare `Metadata(clientRecordId=…)` constructor (internal in 1.1.0 — won't compile). Use `Metadata.activelyRecorded(clientRecordId = …, clientRecordVersion = 1L, device = Device(type = Device.TYPE_WATCH))` on **every** record. HC dedups/upserts records **per record type** by `clientRecordId`. The once-per-session records (ExerciseSession, HeartRate, Speed, Distance, Calories, Elevation) use `clientRecordId = sessionId`. The **N HRV records are all the same type**, so each needs a **distinct, stable** id — `"${sessionId}_hrv_$index"` (index = RMSSD window ordinal) — or they collapse to one point on insert. Stable ids keep re-sync idempotent.
 - **Route** is `exerciseRoute` on `ExerciseSessionRecord` — NEVER separate location records.
 - **Purge only after ACK:** the watch deletes a `.ndjson` only when the phone confirms the HC write. The watch file is the durable retry queue.
 - **All-or-nothing per session:** build all records for one session, insert, and only send `/runh10/ack/<id>` on full success. Any failure → no ACK → run stays on watch → retried next sync. Idempotency makes retries safe.
@@ -603,8 +603,8 @@ class HealthConnectWriter(private val context: Context) {
         val end = Instant.ofEpochMilli(meta.endEpochMs ?: lastTs)
         val startOffset = zone.rules.getOffset(start)
         val endOffset = zone.rules.getOffset(end)
-        fun md() = Metadata.activelyRecorded(
-            clientRecordId = meta.sessionId,
+        fun md(clientRecordId: String = meta.sessionId) = Metadata.activelyRecorded(
+            clientRecordId = clientRecordId,
             clientRecordVersion = 1L,
             device = Device(type = Device.TYPE_WATCH),
         )
@@ -689,12 +689,13 @@ class HealthConnectWriter(private val context: Context) {
             )
         }
 
-        // HRV/RMSSD — one instantaneous record per surviving window
-        rmssd.forEach { p ->
+        // HRV/RMSSD — one instantaneous record per surviving window.
+        // Each needs a DISTINCT clientRecordId (same record type) or HC collapses them to one.
+        rmssd.forEachIndexed { index, p ->
             val t = Instant.ofEpochMilli(p.tsMs)
             records += HeartRateVariabilityRmssdRecord(
                 time = t, zoneOffset = zone.rules.getOffset(t),
-                heartRateVariabilityMillis = p.rmssdMs, metadata = md(),
+                heartRateVariabilityMillis = p.rmssdMs, metadata = md("${meta.sessionId}_hrv_$index"),
             )
         }
 
