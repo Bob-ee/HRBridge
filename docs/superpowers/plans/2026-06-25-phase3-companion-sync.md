@@ -12,7 +12,8 @@
 
 Copy these verbatim into every task's mental checklist:
 
-- **Repo:** `~/AndroidStudioProjects/RunH10` (NOT the WatchApp working dir). Base package `com.example.runh10`. `:mobile` `applicationId`/`namespace` = `com.example.runh10`. compileSdk/minSdk/targetSdk = **34**. `:mobile` and `:shared` use Java/jvmTarget **17**.
+- **Repo:** `~/AndroidStudioProjects/RunH10` (NOT the WatchApp working dir). Base package `com.example.runh10`. `:mobile` `applicationId`/`namespace` = `com.example.runh10`. **minSdk/targetSdk = 34** for all modules. **compileSdk: `:mobile` = 36, `:wear`/`:shared` = 34.** `:mobile` and `:shared` use Java/jvmTarget **17**.
+- **Toolchain bump (forced by HC 1.1.0, Task 1):** `androidx.health.connect:connect-client` 1.1.0 declares `minCompileSdk=36` + `minAndroidGradlePluginVersion=8.9.1` (verified in its `aar-metadata.properties`). This **supersedes** the original Phase 0 pins of AGP 8.7.0 / compileSdk 34 — they are incompatible with the (locked) HC 1.1.0 dependency. Pinned values now: **AGP 8.9.1**, **Gradle wrapper 8.11.1**, `:mobile` compileSdk **36**. `:wear`/`:shared` stay compileSdk 34 and still build/test green under the bumped toolchain (regression-verified Task 1).
 - **Build:** `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` then `cd ~/AndroidStudioProjects/RunH10 && ./gradlew <task>`. `adb` = `/opt/homebrew/bin/adb`.
 - **Health Connect is PHONE-ONLY** (`androidx.health.connect:connect-client` 1.1.0). NEVER add it to `:wear`.
 - **Reuse `:shared`** (`SampleRow`, `SessionMeta`, `Split`, `SessionBundle`, `NdjsonSerializer`, new `SyncProtocol`). NEVER redefine the NDJSON schema or the wire protocol in `:mobile` or `:wear`.

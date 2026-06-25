@@ -1,7 +1,11 @@
 package com.example.runh10.shared.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class SessionState { RECORDING, FINALIZED, SYNCING, SYNCED }
 
+@Serializable
 data class SessionMeta(
     val sessionId: String,
     val startEpochMs: Long,
