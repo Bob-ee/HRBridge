@@ -23,6 +23,7 @@ kotlinxSerializationJson = "1.6.3"
 wearOngoing = "1.1.0"
 wear = "1.4.0"
 coroutinesTest = "1.8.1"
+coroutinesPlayServices = "1.8.1"
 testCore = "1.6.1"
 testRunner = "1.6.2"
 healthConnect = "1.1.0"
@@ -58,6 +59,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 androidx-wear-ongoing = { group = "androidx.wear", name = "wear-ongoing", version.ref = "wearOngoing" }
 androidx-wear = { group = "androidx.wear", name = "wear", version.ref = "wear" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "testCore" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 health-connect-client = { group = "androidx.health.connect", name = "connect-client", version.ref = "healthConnect" }

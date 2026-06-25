@@ -60,6 +60,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
 
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(project(":shared"))
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)

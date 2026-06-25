@@ -39,6 +39,8 @@ class SessionStore(context: Context) {
     suspend fun markSynced(id: String) = dao.setState(id, SessionState.SYNCED.name)
     suspend fun purgeFile(id: String) { fileFor(id).delete() }
 
+    suspend fun getUnsynced(): List<SessionMeta> = dao.unsynced().map { it.toMeta() }
+
     fun observeAll(): Flow<List<SessionMeta>> = dao.observeAll().map { list -> list.map { it.toMeta() } }
 
     fun close() { db.close() }
