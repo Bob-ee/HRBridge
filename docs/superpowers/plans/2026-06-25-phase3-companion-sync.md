@@ -105,7 +105,7 @@ plugins {
 
 android {
     namespace = "com.example.runh10"
-    compileSdk = 34
+    compileSdk = 36   // HC 1.1.0 requires minCompileSdk=36 (see Global Constraints toolchain note)
 
     defaultConfig {
         applicationId = "com.example.runh10"
@@ -597,10 +597,13 @@ class HealthConnectWriter(private val context: Context) {
     suspend fun write(bundle: SessionBundle, rmssd: List<RmssdCalculator.RmssdPoint>) {
         val meta = bundle.meta
         val zone = runCatching { ZoneId.of(meta.startZoneId) }.getOrDefault(ZoneId.systemDefault())
-        val start = Instant.ofEpochMilli(meta.startEpochMs)
         val samples = bundle.samples
+        val firstTs = samples.minOfOrNull { it.ts } ?: meta.startEpochMs
         val lastTs = samples.maxOfOrNull { it.ts } ?: meta.startEpochMs
-        val end = Instant.ofEpochMilli(meta.endEpochMs ?: lastTs)
+        // Widen [start,end] to CONTAIN every sample: HC rejects the whole insert if any exerciseRoute /
+        // sample time falls outside the session window — which would make this session fail on every retry.
+        val start = Instant.ofEpochMilli(minOf(meta.startEpochMs, firstTs))
+        val end = Instant.ofEpochMilli(maxOf(meta.endEpochMs ?: lastTs, lastTs))
         val startOffset = zone.rules.getOffset(start)
         val endOffset = zone.rules.getOffset(end)
         fun md(clientRecordId: String = meta.sessionId) = Metadata.activelyRecorded(
@@ -1034,7 +1037,6 @@ class SyncListenerService : WearableListenerService() {
 package com.example.runh10.sync
 
 import android.content.Context
-import androidx.health.connect.client.HealthConnectClient
 import com.example.runh10.healthconnect.HealthConnectWriter
 import com.example.runh10.healthconnect.RmssdCalculator
 import com.example.runh10.parse.SessionParser
@@ -1043,11 +1045,17 @@ import com.example.runh10.shared.model.SessionMeta
 import com.example.runh10.shared.sync.SyncProtocol
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import android.net.Uri
 
 data class SyncResult(val synced: Int, val failed: Int, val total: Int)
+
+private const val LIST_TIMEOUT_MS = 30_000L      // wait for the watch's unsynced-list reply
+private const val SESSION_TIMEOUT_MS = 120_000L  // per-session transfer + parse + HC write
 
 class PhoneSyncClient(private val context: Context) {
     private val capabilityClient by lazy { Wearable.getCapabilityClient(context) }
@@ -1066,7 +1074,11 @@ class PhoneSyncClient(private val context: Context) {
         }
 
         messageClient.sendMessage(nodeId, SyncProtocol.PATH_REQUEST_UNSYNCED, ByteArray(0)).await()
-        val metas = SyncProtocol.decodeMetaList(ChannelInbox.awaitUnsyncedList())
+        val metas = try {
+            SyncProtocol.decodeMetaList(withTimeout(LIST_TIMEOUT_MS) { ChannelInbox.awaitUnsyncedList() })
+        } catch (e: TimeoutCancellationException) {
+            progress("Watch did not respond"); return SyncResult(0, 0, 0)
+        }
         if (metas.isEmpty()) { progress("No unsynced runs"); return SyncResult(0, 0, 0) }
         progress("Found ${metas.size} unsynced run(s)")
 
@@ -1074,7 +1086,15 @@ class PhoneSyncClient(private val context: Context) {
         var failed = 0
         metas.sortedBy { it.startEpochMs }.forEachIndexed { i, meta ->
             progress("Pulling run ${i + 1} of ${metas.size}…")
-            val ok = runCatching { syncOne(nodeId, meta) }.getOrElse { e ->
+            // TimeoutCancellationException is a CancellationException — catch it FIRST so a genuine
+            // outer cancellation still propagates instead of being swallowed as a per-session failure.
+            val ok = try {
+                withTimeout(SESSION_TIMEOUT_MS) { syncOne(nodeId, meta) }
+            } catch (e: TimeoutCancellationException) {
+                progress("✗ ${meta.sessionId}: timed out"); false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 progress("✗ ${meta.sessionId}: ${e.message}"); false
             }
             if (ok) { synced++; progress("✓ ${meta.sessionId} written to Health Connect") } else failed++
@@ -1085,18 +1105,19 @@ class PhoneSyncClient(private val context: Context) {
 
     private suspend fun syncOne(nodeId: String, meta: SessionMeta): Boolean {
         val id = meta.sessionId
-        messageClient.sendMessage(nodeId, SyncProtocol.pathStartTransfer(id), ByteArray(0)).await()
-
-        val channel = ChannelInbox.awaitChannel(SyncProtocol.pathSession(id))
         val dest = File(context.cacheDir, "$id.ndjson")
-        channelClient.receiveFile(channel, Uri.fromFile(dest), false).await()
-        ChannelInbox.awaitInputClosed(SyncProtocol.pathSession(id))
-
-        val bundle = dest.useLines { SessionParser.parse(meta, it) }
-        val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
-        writer.write(bundle, rmssd)
-        dest.delete()
-
+        messageClient.sendMessage(nodeId, SyncProtocol.pathStartTransfer(id), ByteArray(0)).await()
+        val channel = ChannelInbox.awaitChannel(SyncProtocol.pathSession(id))
+        try {
+            channelClient.receiveFile(channel, Uri.fromFile(dest), false).await()
+            ChannelInbox.awaitInputClosed(SyncProtocol.pathSession(id))
+            val bundle = dest.useLines { SessionParser.parse(meta, it) }
+            val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
+            writer.write(bundle, rmssd)   // throws on failure → ACK skipped (all-or-nothing)
+        } finally {
+            runCatching { channelClient.close(channel) }   // release GMS channel on success + failure
+            dest.delete()                                  // clean temp file on both paths
+        }
         messageClient.sendMessage(nodeId, SyncProtocol.pathAck(id), ByteArray(0)).await()
         return true
     }
@@ -1195,21 +1216,33 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
             val available = client.isHealthConnectReady()
             val granted = available && client.hasPermissions()
             _state.update { it.copy(hcAvailable = available, permissionsGranted = granted) }
-            if (available && granted && !_state.value.syncing) runSync()
+            if (available && granted && beginSyncIfIdle()) runSyncBody()
         }
     }
 
     fun syncNow() {
-        if (_state.value.hcAvailable && _state.value.permissionsGranted && !_state.value.syncing) {
-            viewModelScope.launch { runSync() }
+        if (_state.value.hcAvailable && _state.value.permissionsGranted && beginSyncIfIdle()) {
+            viewModelScope.launch { runSyncBody() }
         }
     }
 
     /** Called by the Activity after the permission request returns. */
     fun onPermissionsResult() = onResume()
 
-    private suspend fun runSync() {
+    /**
+     * Atomic check-and-set on the single-threaded main dispatcher (viewModelScope =
+     * Dispatchers.Main.immediate): returns true and marks syncing exactly once when idle. There is no
+     * suspension between the read and the set, so two near-simultaneous callers — e.g. repeatOnLifecycle
+     * RESUMED and the permission-result callback both calling onResume() — cannot both start a sync.
+     */
+    private fun beginSyncIfIdle(): Boolean {
+        if (_state.value.syncing) return false
         _state.update { it.copy(syncing = true) }
+        return true
+    }
+
+    /** Runs a sync pass; assumes the caller already won beginSyncIfIdle(). Resets the flag on exit. */
+    private suspend fun runSyncBody() {
         try {
             client.sync { line -> _state.update { s -> s.copy(log = s.log + line) } }
         } finally {

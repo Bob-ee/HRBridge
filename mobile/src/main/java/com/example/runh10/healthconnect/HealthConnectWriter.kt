@@ -37,10 +37,13 @@ class HealthConnectWriter(private val context: Context) {
     suspend fun write(bundle: SessionBundle, rmssd: List<RmssdCalculator.RmssdPoint>) {
         val meta = bundle.meta
         val zone = runCatching { ZoneId.of(meta.startZoneId) }.getOrDefault(ZoneId.systemDefault())
-        val start = Instant.ofEpochMilli(meta.startEpochMs)
         val samples = bundle.samples
+        val firstTs = samples.minOfOrNull { it.ts } ?: meta.startEpochMs
         val lastTs = samples.maxOfOrNull { it.ts } ?: meta.startEpochMs
-        val end = Instant.ofEpochMilli(meta.endEpochMs ?: lastTs)
+        // Widen [start,end] to CONTAIN every sample: HC rejects the whole insert if any exerciseRoute /
+        // sample time falls outside the session window — which would make this session fail on every retry.
+        val start = Instant.ofEpochMilli(minOf(meta.startEpochMs, firstTs))
+        val end = Instant.ofEpochMilli(maxOf(meta.endEpochMs ?: lastTs, lastTs))
         val startOffset = zone.rules.getOffset(start)
         val endOffset = zone.rules.getOffset(end)
         fun md(clientRecordId: String = meta.sessionId) = Metadata.activelyRecorded(
