@@ -77,7 +77,6 @@ fun WorkoutFlow(
     onEnd: () -> Unit,
     onDone: () -> Unit,
     onPauseToggle: () -> Unit,
-    onLap: () -> Unit,
     onStartNow: () -> Unit,
     onAge: (Int) -> Unit,
     onMaxHr: (Int) -> Unit,
@@ -101,7 +100,6 @@ fun WorkoutFlow(
             ui = ui,
             ambientState = ambientState,
             onPauseToggle = onPauseToggle,
-            onLap = onLap,
             onStartNow = onStartNow,
             onEnd = {
                 summaryUi = ui
@@ -243,7 +241,6 @@ private fun ActiveScreen(
     ui: UiState,
     ambientState: AmbientState = AmbientState(),
     onPauseToggle: () -> Unit,
-    onLap: () -> Unit,
     onStartNow: () -> Unit,
     onEnd: () -> Unit,
 ) {
@@ -359,7 +356,6 @@ private fun ActiveScreen(
                         onClick = onPauseToggle,
                     )
                 }
-                ControlButton(label = "⚑", onClick = onLap)
                 ControlButton(label = "■", onClick = onEnd, danger = true)
             }
         }

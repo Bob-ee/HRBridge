@@ -1,7 +1,6 @@
 package com.example.runh10.session
 
 import com.example.runh10.shared.model.HrRow
-import com.example.runh10.shared.model.LapRow
 import com.example.runh10.shared.model.LocRow
 import com.example.runh10.shared.model.RrRow
 import com.example.runh10.shared.model.SampleRow
@@ -54,8 +53,6 @@ class SessionRecorder(
         val w = writer ?: return
         w.write(NdjsonSerializer.encode(row)); w.newLine(); w.flush()
     }
-
-    suspend fun lap() { writeLine(LapRow(ts = System.currentTimeMillis())) }
 
     suspend fun stop() {
         jobs.forEach { it.cancel() }; jobs.clear()

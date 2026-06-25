@@ -281,16 +281,6 @@ object WorkoutController {
         scope.launch { recorder.start(ble.hr, exercise.metrics) }
     }
 
-    fun lap() {
-        if (stateMachine.state == RunState.WARMUP) return
-        val distance = uiState.value.distanceMeters
-        val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
-        val bpm = uiState.value.bpm
-        val split = splitTracker.lap(runDist, clock.movingMs(), bpm, null)
-        _splits.add(split)
-        scope.launch { recorder.lap() }
-    }
-
     fun manualPause() {
         stateMachine.manualPause()
         clock.pause()

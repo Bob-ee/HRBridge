@@ -27,5 +27,7 @@ data class RrRow(override val ts: Long, val rr: Int) : SampleRow()
 @Serializable @SerialName("cal")
 data class CalRow(override val ts: Long, val kcal: Double) : SampleRow()
 
+// Retained for backward-compatible decoding of older sessions; no longer written
+// (the manual-lap feature was removed — splits are auto-generated per mile).
 @Serializable @SerialName("lap")
 data class LapRow(override val ts: Long) : SampleRow()

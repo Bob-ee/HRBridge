@@ -20,13 +20,6 @@ class SplitTracker(private val splitMeters: Double = Constants.MILE_METERS) {
         } else null
     }
 
-    fun lap(cumulativeDistanceM: Double, movingMs: Long, bpm: Int?, altitudeM: Double?): Split {
-        accumulate(bpm, altitudeM)
-        val s = close(cumulativeDistanceM, movingMs)
-        nextBoundary = cumulativeDistanceM + splitMeters
-        return s
-    }
-
     private fun accumulate(bpm: Int?, alt: Double?) {
         if (bpm != null) { bpmSum += bpm; bpmCount++ }
         if (alt != null) {

@@ -144,7 +144,6 @@ class MainActivity : ComponentActivity() {
                                 else
                                     WorkoutController.manualPause()
                             },
-                            onLap = { WorkoutController.lap() },
                             onStartNow = { WorkoutController.startNow() },
                             onAge = { v -> scope.launch { settingsStore.setAge(v) } },
                             onMaxHr = { v -> scope.launch { settingsStore.setMaxHr(v) } },
