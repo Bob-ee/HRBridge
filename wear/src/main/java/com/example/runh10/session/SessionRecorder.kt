@@ -1,5 +1,6 @@
 package com.example.runh10.session
 
+import com.example.runh10.shared.model.EvtRow
 import com.example.runh10.shared.model.HrRow
 import com.example.runh10.shared.model.LocRow
 import com.example.runh10.shared.model.RrRow
@@ -39,8 +40,26 @@ class SessionRecorder(
             }
         }
         jobs += scope.launch {
+            // Diagnostic breadcrumbs: remember the last-seen GPS availability and
+            // exercise state so we can record a transition the moment either changes.
+            // This is what tells us, post-hoc, whether GPS went UNAVAILABLE (and never
+            // recovered) or the exercise ended — logcat rotates away, the session file
+            // does not. Init to null so the first emission writes a baseline.
+            var lastGps: String? = null
+            var lastState: String? = null
             metrics.collect { mx ->
                 val ts = System.currentTimeMillis()
+                if (mx.gps != lastGps || mx.exerciseState != lastState) {
+                    writeLine(
+                        EvtRow(
+                            ts = ts,
+                            gps = mx.gps.takeIf { it != lastGps },
+                            state = mx.exerciseState.takeIf { it != lastState },
+                        )
+                    )
+                    lastGps = mx.gps
+                    lastState = mx.exerciseState
+                }
                 if (mx.lat != null && mx.lon != null) {
                     writeLine(LocRow(ts = ts, lat = mx.lat, lon = mx.lon, alt = mx.altitude, spd = mx.speedMps, dist = mx.distanceMeters))
                 }
