@@ -8,14 +8,16 @@ import kotlinx.serialization.json.Json
  * to the watch over the Data Layer; the watch sends transport/volume commands back.
  */
 object MediaProtocol {
+    // NOTE: deliberately NOT under /runh10 — the sync WearableListenerServices filter on
+    // that prefix, and overlapping filters would double-route these events.
     /** Phone → watch: JSON [MediaState] snapshot (MessageClient broadcast). */
-    const val PATH_STATE = "/runh10/media/state"
+    const val PATH_STATE = "/hrbridge/media/state"
 
     /** Watch → phone: JSON [MediaCommand]. */
-    const val PATH_COMMAND = "/runh10/media/cmd"
+    const val PATH_COMMAND = "/hrbridge/media/cmd"
 
     /** Watch → phone: ask for an immediate state re-broadcast (empty payload). */
-    const val PATH_REQUEST_STATE = "/runh10/media/request_state"
+    const val PATH_REQUEST_STATE = "/hrbridge/media/request_state"
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 

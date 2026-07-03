@@ -11,6 +11,18 @@
     <uses-permission android:name="android.permission.health.WRITE_ELEVATION_GAINED" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" />
 
+    <!-- Phone record loop (HEAT redesign): H10 BLE + GPS + typed FGS -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
     </queries>
@@ -63,6 +75,33 @@
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/runh10" />
             </intent-filter>
         </service>
+
+        <!-- Music bridge: watch commands / state requests (disjoint /hrbridge prefix) -->
+        <service
+            android:name=".media.MediaCommandListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/hrbridge/media" />
+            </intent-filter>
+        </service>
+
+        <!-- Music bridge: session access + proactive now-playing relay -->
+        <service
+            android:name=".media.MediaNotificationListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Phone record loop FGS -->
+        <service
+            android:name=".record.RecordForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="location|connectedDevice" />
     </application>
 
 </manifest>

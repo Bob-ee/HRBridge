@@ -1,6 +1,7 @@
 package com.example.runh10.sync
 
 import android.content.Context
+import com.example.runh10.data.RunRepository
 import com.example.runh10.healthconnect.HealthConnectWriter
 import com.example.runh10.healthconnect.RmssdCalculator
 import com.example.runh10.parse.SessionParser
@@ -69,7 +70,10 @@ class PhoneSyncClient(private val context: Context) {
 
     private suspend fun syncOne(nodeId: String, meta: SessionMeta): Boolean {
         val id = meta.sessionId
-        val dest = File(context.cacheDir, "$id.ndjson")
+        // HEAT redesign: sessions now land in the phone's permanent run store so the
+        // feed/detail screens can render them — no longer a throwaway cache file.
+        val repo = RunRepository.get(context)
+        val dest = repo.fileFor(id)
         messageClient.sendMessage(nodeId, SyncProtocol.pathStartTransfer(id), ByteArray(0)).await()
         val channel = ChannelInbox.awaitChannel(SyncProtocol.pathSession(id))
         try {
@@ -78,9 +82,16 @@ class PhoneSyncClient(private val context: Context) {
             val bundle = dest.useLines { SessionParser.parse(meta, it) }
             val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
             writer.write(bundle, rmssd)   // throws on failure → ACK skipped (all-or-nothing)
+            repo.ingest(
+                bundle = bundle,
+                source = "watch",
+                precomputedHrvMs = rmssd.takeIf { it.isNotEmpty() }?.map { it.rmssdMs }?.average(),
+            )
+        } catch (t: Throwable) {
+            dest.delete()   // failed transfer/write → clean slate so the retry re-pulls
+            throw t
         } finally {
             runCatching { channelClient.close(channel) }   // release GMS channel on success + failure
-            dest.delete()                                  // clean temp file on both paths
         }
         messageClient.sendMessage(nodeId, SyncProtocol.pathAck(id), ByteArray(0)).await()
         return true

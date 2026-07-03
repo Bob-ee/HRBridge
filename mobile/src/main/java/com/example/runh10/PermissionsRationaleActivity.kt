@@ -14,7 +14,7 @@ class PermissionsRationaleActivity : ComponentActivity() {
             MaterialTheme {
                 Surface {
                     Text(
-                        "Run H10 writes your recorded runs (route, heart rate, distance, pace, " +
+                        "HR Bridge writes your recorded runs (route, heart rate, distance, pace, " +
                             "calories, elevation, and HRV/RMSSD) to Health Connect. Data is written " +
                             "only when you sync and is never shared elsewhere."
                     )
