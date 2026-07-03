@@ -56,15 +56,18 @@ class RunRepository(private val context: Context) {
         precomputedHrvMs: Double? = null,
         kcal: Double? = null,
     ): RunSummaryEntity = withContext(Dispatchers.Default) {
+        // A re-sync of an already-ingested session must not clobber a user-edited
+        // name or feel — keep them if the row exists.
+        val existing = dao.byId(bundle.meta.sessionId)
         val summary = RunAnalyzer.analyze(
             bundle = bundle,
             zoneCalc = zoneCalculator(),
-            name = name ?: defaultName(bundle.meta.startEpochMs),
+            name = existing?.name ?: name ?: defaultName(bundle.meta.startEpochMs),
             source = source,
-            workoutType = workoutType,
+            workoutType = existing?.workoutType ?: workoutType,
             precomputedHrvMs = precomputedHrvMs,
             kcal = kcal,
-        )
+        ).copy(feel = existing?.feel)
         dao.upsert(summary)
         summary
     }

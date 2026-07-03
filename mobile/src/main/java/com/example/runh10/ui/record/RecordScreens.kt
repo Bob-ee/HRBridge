@@ -554,7 +554,7 @@ private fun SaveContent(
                 Row(Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp)) {
                     SaveStat(Fmt.dist(ui.distanceM, miles), if (miles) "MILES" else "KM", Heat.text, Modifier.weight(1f))
                     SaveStat(Fmt.duration(ui.movingSec), "TIME", Heat.text, Modifier.weight(1f))
-                    SaveStat(ui.bpm?.toString() ?: "—", "AVG HR", Heat.brandOrange, Modifier.weight(1f))
+                    SaveStat(ui.avgBpm?.toString() ?: "—", "AVG HR", Heat.brandOrange, Modifier.weight(1f))
                     SaveStat(ui.hrvMs?.roundToInt()?.toString() ?: "—", "HRV ms", Heat.hrvPurple, Modifier.weight(1f))
                 }
             }

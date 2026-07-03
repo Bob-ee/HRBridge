@@ -55,6 +55,7 @@ data class PhoneRunUi(
     val phase: Phase = Phase.READY,
     val bleState: String = "IDLE",
     val bpm: Int? = null,
+    val avgBpm: Int? = null,
     val hrZone: Int? = null,
     val zoneEdges: List<Int> = emptyList(),
     val gpsLocked: Boolean = false,
@@ -116,6 +117,8 @@ object PhoneRecordController {
     private var meta: SessionMeta? = null
     private var writer: BufferedWriter? = null
     private var zoneCalc: ZoneCalculator? = null
+    private var hrSum = 0L
+    private var hrCount = 0
     private val runJobs = mutableListOf<Job>()
     private var tts: TextToSpeech? = null
     private var pendingBundleRows = mutableListOf<com.example.runh10.shared.model.SampleRow>()
@@ -258,9 +261,13 @@ object PhoneRecordController {
 
         if (tts == null) tts = TextToSpeech(appContext) { }
 
+        hrSum = 0L
+        hrCount = 0
         runJobs += scope.launch {
             ble.hr.filterNotNull().collect { s ->
                 writeRow(HrRow(ts = s.timestamp, bpm = s.bpm))
+                hrSum += s.bpm
+                hrCount++
                 s.rrMs.forEach { rr ->
                     writeRow(RrRow(ts = s.timestamp, rr = rr))
                     rollingRmssd.feed(rr)
@@ -306,6 +313,7 @@ object PhoneRecordController {
 
         val movingMs = clock.movingMs()
         _ui.value = _ui.value.copy(
+            avgBpm = if (hrCount > 0) (hrSum / hrCount).toInt() else null,
             distanceM = distanceM,
             elapsedSec = (now - startMs) / 1000,
             movingSec = movingMs / 1000,

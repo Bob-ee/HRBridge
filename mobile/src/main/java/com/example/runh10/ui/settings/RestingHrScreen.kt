@@ -71,6 +71,8 @@ fun RestingHrScreen(onBack: () -> Unit) {
     val duration = profile.measureDurationSec
 
     // Sampling loop while measuring: 1 Hz snapshot of the live BPM.
+    // Read straight from the controller's flow each tick — the composable-scoped
+    // `liveBpm` would be a stale capture inside this long-running effect.
     LaunchedEffect(phase) {
         if (phase != MeasurePhase.MEASURING) return@LaunchedEffect
         elapsed = 0
@@ -78,7 +80,7 @@ fun RestingHrScreen(onBack: () -> Unit) {
         while (elapsed < duration) {
             delay(1000)
             elapsed += 1
-            liveBpm?.let { readings = readings + it }
+            PhoneRecordController.ui.value.bpm?.let { readings = readings + it }
         }
         // Lowest stable rate: mean of the lowest 20% of samples.
         result = readings.sorted().take((readings.size / 5).coerceAtLeast(1)).takeIf { it.isNotEmpty() }
