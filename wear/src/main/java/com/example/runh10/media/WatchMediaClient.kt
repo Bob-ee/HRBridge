@@ -82,13 +82,17 @@ class WatchMediaClient(private val context: Context) : MessageClient.OnMessageRe
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != MediaProtocol.PATH_STATE) return
         val s = runCatching { MediaProtocol.decodeState(event.data) }.getOrNull() ?: return
-        phoneStateAtMs = System.currentTimeMillis()
         if (s.sourcePackage != null) {
+            phoneStateAtMs = System.currentTimeMillis()
             _state.value = s
             _localFallback.value = false
-        } else if (!_localFallback.value) {
-            // Phone says nothing is playing; keep local state if we have one.
-            _state.value = if (localController != null) _state.value else null
+        } else {
+            // Phone reports nothing playing: drop its claim entirely so a watch-local
+            // session can take over immediately (a stale phone track must not linger
+            // and swallow transport commands for the freshness window).
+            phoneStateAtMs = 0L
+            if (!_localFallback.value) _state.value = null
+            publishLocalIfActive()
         }
     }
 

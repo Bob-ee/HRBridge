@@ -26,6 +26,7 @@ object RunAnalyzer {
         workoutType: String = "RUN",
         precomputedHrvMs: Double? = null,
         kcal: Double? = null,
+        movingMsOverride: Long? = null,
     ): RunSummaryEntity {
         val samples = bundle.samples
         val startMs = bundle.meta.startEpochMs
@@ -86,7 +87,10 @@ object RunAnalyzer {
             endMs = endMs,
             distanceM = distanceM,
             elapsedMs = elapsedMs,
-            movingMs = splits.sumOf { it.movingMs }.takeIf { it > 0 } ?: elapsedMs,
+            // Splits only cover whole miles — never use their sum as moving time (it
+            // would drop the final partial mile and wildly overstate pace). True
+            // moving time comes from the recorder when available; else elapsed.
+            movingMs = movingMsOverride ?: elapsedMs,
             avgBpm = avgBpm,
             maxBpm = maxBpm,
             hrvMs = hrvMs,

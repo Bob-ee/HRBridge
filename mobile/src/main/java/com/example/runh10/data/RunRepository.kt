@@ -55,6 +55,7 @@ class RunRepository(private val context: Context) {
         workoutType: String = "RUN",
         precomputedHrvMs: Double? = null,
         kcal: Double? = null,
+        movingMsOverride: Long? = null,
     ): RunSummaryEntity = withContext(Dispatchers.Default) {
         // A re-sync of an already-ingested session must not clobber a user-edited
         // name or feel — keep them if the row exists.
@@ -67,6 +68,7 @@ class RunRepository(private val context: Context) {
             workoutType = existing?.workoutType ?: workoutType,
             precomputedHrvMs = precomputedHrvMs,
             kcal = kcal,
+            movingMsOverride = movingMsOverride,
         ).copy(feel = existing?.feel)
         dao.upsert(summary)
         summary

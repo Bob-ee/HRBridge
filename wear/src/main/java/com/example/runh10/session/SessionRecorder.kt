@@ -11,6 +11,7 @@ import com.example.runh10.workout.ExerciseMetrics
 import com.example.runh10.workout.HrSample
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -27,7 +28,7 @@ class SessionRecorder(
     val activeSessionId: String? get() = meta?.sessionId
 
     suspend fun start(
-        hr: StateFlow<HrSample?>,
+        hr: Flow<HrSample?>,
         metrics: StateFlow<ExerciseMetrics>,
     ): SessionMeta {
         val m = store.createSession(ZoneId.systemDefault().id)

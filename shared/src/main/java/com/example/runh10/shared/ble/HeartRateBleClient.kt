@@ -22,9 +22,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -54,8 +58,17 @@ class HeartRateBleClient(private val context: Context) {
     private val _state = MutableStateFlow(State.IDLE)
     val state: StateFlow<State> = _state.asStateFlow()
 
-    private val _hr = MutableStateFlow<HrSample?>(null)
-    val hr: StateFlow<HrSample?> = _hr.asStateFlow()
+    // SharedFlow, NOT StateFlow: a conflated StateFlow can silently drop an HrSample
+    // (and its RR intervals) when two GATT notifications land before the main-thread
+    // collector runs — corrupting the session file and HRV. replay=1 keeps late
+    // subscribers (combine) primed; the buffer absorbs bursts; the initial null
+    // emission preserves the old StateFlow "starts with null" contract.
+    private val _hr = MutableSharedFlow<HrSample?>(
+        replay = 1,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    ).apply { tryEmit(null) }
+    val hr: SharedFlow<HrSample?> = _hr.asSharedFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var gatt: BluetoothGatt? = null
@@ -230,7 +243,7 @@ class HeartRateBleClient(private val context: Context) {
                 i += 2
             }
         }
-        _hr.value = HrSample(bpm = bpm, rrMs = rrs, timestamp = System.currentTimeMillis())
+        _hr.tryEmit(HrSample(bpm = bpm, rrMs = rrs, timestamp = System.currentTimeMillis()))
         Log.d(TAG, "HR=$bpm rr=$rrs")
     }
 

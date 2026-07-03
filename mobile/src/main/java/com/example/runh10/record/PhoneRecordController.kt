@@ -112,8 +112,11 @@ object PhoneRecordController {
     private val splits = mutableListOf<Split>()
     private val route = mutableListOf<Pair<Double, Double>>()
     private var distanceM = 0.0
+    private var warmupDistanceM = 0.0
     private var lastFix: Pair<Double, Double>? = null
     private var startMs = 0L
+    private var finishedEndMs = 0L
+    private var finishedMovingMs = 0L
     private var meta: SessionMeta? = null
     private var writer: BufferedWriter? = null
     private var zoneCalc: ZoneCalculator? = null
@@ -191,12 +194,23 @@ object PhoneRecordController {
         _ui.value = _ui.value.copy(workoutType = type)
     }
 
+    /** Latest per-fix GPS speed — drives run/idle classification even during warmup. */
+    @Volatile private var lastGpsSpeedMps: Double? = null
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val loc = result.lastLocation ?: return
             val now = System.currentTimeMillis()
             _ui.value = _ui.value.copy(gpsLocked = loc.accuracy <= 25f, gpsAccuracyM = loc.accuracy)
             if (_ui.value.phase != PhoneRunUi.Phase.LIVE) return
+            lastGpsSpeedMps = if (loc.hasSpeed()) loc.speed.toDouble() else null
+
+            // While paused, keep the fix chain anchored but do NOT accumulate distance,
+            // extend the route, or write samples — a paused run must not grow.
+            if (stateMachine.state == RunState.MANUAL_PAUSED || stateMachine.state == RunState.AUTO_PAUSED) {
+                lastFix = loc.latitude to loc.longitude
+                return
+            }
 
             lastFix?.let { (plat, plon) ->
                 val d = roughMeters(plat, plon, loc.latitude, loc.longitude)
@@ -231,7 +245,11 @@ object PhoneRecordController {
         route.clear()
         pendingBundleRows.clear()
         distanceM = 0.0
+        warmupDistanceM = 0.0
         lastFix = null
+        lastGpsSpeedMps = null
+        finishedEndMs = 0L
+        finishedMovingMs = 0L
         startMs = System.currentTimeMillis()
         this.voiceEnabled = voiceCoach
         this.mileAnnouncementsEnabled = mileAnnouncements
@@ -289,21 +307,27 @@ object PhoneRecordController {
     private fun tick() {
         val now = System.currentTimeMillis()
         val cad = cadence.cadenceSpm
-        val speed = rollingPace.paceMps()
+        // Feed the rolling pace continuously so run-detection has a real speed even
+        // during warmup; the per-fix GPS speed is the primary classifier signal.
+        rollingPace.add(now, distanceM)
+        val speed = lastGpsSpeedMps ?: rollingPace.paceMps()
 
         if (autoPauseEnabled || stateMachine.state == RunState.WARMUP) {
             val motion = classifier.feed(cad, speed, now)
             when (stateMachine.onMotion(motion)) {
-                RunEvent.RUN_DETECTED -> say("Run detected")
+                RunEvent.RUN_DETECTED -> {
+                    warmupDistanceM = distanceM
+                    say("Run detected")
+                }
                 RunEvent.AUTO_PAUSED -> { clock.pause(); say("Paused") }
                 RunEvent.AUTO_RESUMED -> { clock.resume(); say("Resumed") }
                 else -> Unit
             }
         }
 
-        if (stateMachine.state != RunState.WARMUP) {
-            rollingPace.add(now, distanceM)
-            splitTracker.onSample(distanceM, clock.movingMs(), _ui.value.bpm, null)?.let { s ->
+        val runDist = (distanceM - warmupDistanceM).coerceAtLeast(0.0)
+        if (stateMachine.state == RunState.RUNNING) {
+            splitTracker.onSample(runDist, clock.movingMs(), _ui.value.bpm, null)?.let { s ->
                 splits += s
                 if (mileAnnouncementsEnabled) say(
                     "Mile ${s.index}. ${paceSpoken(s.avgPaceMps)} per mile.",
@@ -319,18 +343,21 @@ object PhoneRecordController {
             movingSec = movingMs / 1000,
             runState = stateMachine.state,
             rollingPaceMps = rollingPace.paceMps(),
-            avgPaceMps = if (movingMs > 0) distanceM / (movingMs / 1000.0) else null,
+            avgPaceMps = if (movingMs > 0) runDist / (movingMs / 1000.0) else null,
             cadenceSpm = cad,
             hrvMs = rollingRmssd.value(),
             splits = splits.toList(),
-            currentLap = if (stateMachine.state != RunState.WARMUP) splitTracker.currentLap(distanceM, movingMs) else null,
+            currentLap = if (stateMachine.state != RunState.WARMUP) splitTracker.currentLap(runDist, movingMs) else null,
             routePoints = route.toList(),
         )
     }
 
     fun manualPause() { stateMachine.manualPause(); clock.pause(); pushRunState() }
     fun manualResume() { if (stateMachine.manualResume() != null) clock.resume(); pushRunState() }
-    fun startNow() { stateMachine.startNow(); pushRunState() }
+    fun startNow() {
+        if (stateMachine.startNow() != null) warmupDistanceM = distanceM
+        pushRunState()
+    }
     private fun pushRunState() { _ui.value = _ui.value.copy(runState = stateMachine.state) }
 
     /** Stop recording; moves to the Save phase (file stays until save/discard). */
@@ -339,15 +366,24 @@ object PhoneRecordController {
         runJobs.clear()
         fused.removeLocationUpdates(locationCallback)
         cadence.stop()
+        // Freeze the run's end + moving time NOW — save-screen dwell must not count.
+        finishedEndMs = System.currentTimeMillis()
+        finishedMovingMs = clock.movingMs()
+        // Close the in-progress lap so splits cover the whole run.
+        if (stateMachine.state != RunState.WARMUP) {
+            val runDist = (distanceM - warmupDistanceM).coerceAtLeast(0.0)
+            val live = splitTracker.currentLap(runDist, finishedMovingMs)
+            if (live.distanceM > 15.0) splits += splitTracker.closeNow(runDist, finishedMovingMs)
+        }
         writer?.flush()
-        _ui.value = _ui.value.copy(phase = PhoneRunUi.Phase.SAVE)
+        _ui.value = _ui.value.copy(phase = PhoneRunUi.Phase.SAVE, splits = splits.toList())
     }
 
     /** Persist: summary into Room (+ optional Health Connect write). Returns sessionId. */
     suspend fun saveRun(name: String, feel: String?): String? {
         val m = meta ?: return null
         writer?.flush(); writer?.close(); writer = null
-        val endMs = System.currentTimeMillis()
+        val endMs = finishedEndMs.takeIf { it > 0 } ?: System.currentTimeMillis()
         val bundle = SessionBundle(
             meta = m.copy(endEpochMs = endMs, state = SessionState.FINALIZED),
             samples = pendingBundleRows.sortedBy { it.ts },
@@ -364,6 +400,7 @@ object PhoneRecordController {
             name = name,
             workoutType = _ui.value.workoutType,
             precomputedHrvMs = rmssd.takeIf { it.isNotEmpty() }?.map { it.rmssdMs }?.average(),
+            movingMsOverride = finishedMovingMs.takeIf { it > 0 },
         )
         feel?.let { repo.updateNameFeel(m.sessionId, name, it) }
         resetToReady()

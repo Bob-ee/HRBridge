@@ -161,7 +161,10 @@ object WorkoutController {
             // The scope is Main.immediate (single-threaded), so mutations below are safe.
             if (m.running) {
                 val motion = classifier.feed(m.metrics.cadenceSpm, m.metrics.speedMps, now)
-                val ev = stateMachine.onMotion(motion)
+                // Auto-pause is a setting: run detection always works, but idle-driven
+                // pause/resume transitions only fire when the toggle is on.
+                val ev = if (stateMachine.state == RunState.WARMUP || currentSettings.autoPause)
+                    stateMachine.onMotion(motion) else null
                 when (ev) {
                     RunEvent.RUN_DETECTED -> {
                         warmupDistanceMeters = distance
@@ -403,6 +406,11 @@ object WorkoutController {
                 avgBpm = avgBpm,
                 hrvMs = finalUi.hrvMs,
             )
+            // The tile renders these aggregates — tell it now, not in 30 minutes.
+            runCatching {
+                androidx.wear.tiles.TileService.getUpdater(appContext)
+                    .requestUpdate(com.example.runh10.tile.HrBridgeTileService::class.java)
+            }
         }
     }
 
