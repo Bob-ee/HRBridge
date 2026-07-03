@@ -62,6 +62,11 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(project(":shared"))
+
+    // Quick-launch tile (HEAT redesign)
+    implementation("androidx.wear.tiles:tiles:1.3.0")
+    implementation("androidx.wear.protolayout:protolayout:1.1.0")
+
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
     implementation(libs.androidx.datastore.preferences)

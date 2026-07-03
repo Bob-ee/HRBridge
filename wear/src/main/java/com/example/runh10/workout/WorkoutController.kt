@@ -3,9 +3,12 @@ package com.example.runh10.workout
 import android.content.Context
 import com.example.runh10.shared.ble.HeartRateBleClient
 import com.example.runh10.data.DevicePrefs
+import com.example.runh10.data.RunHistoryPrefs
 import com.example.runh10.data.RunSettings
 import com.example.runh10.data.SettingsStore
+import com.example.runh10.data.defaultRunName
 import com.example.runh10.data.effectiveMaxHr
+import com.example.runh10.shared.run.RollingRmssd
 import com.example.runh10.exercise.ExerciseClientManager
 import com.example.runh10.session.SessionRecorder
 import com.example.runh10.session.SessionStore
@@ -73,6 +76,14 @@ object WorkoutController {
     private var stateMachine = RunStateMachine()
     private var splitTracker = SplitTracker()
     private var rollingPace = RollingPace()
+    private var rollingRmssd = RollingRmssd()
+
+    /** Decimated GPS trail for the summary sketch (≥10 m between points, capped). */
+    private val _route = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
+
+    /** Collectors that live only for the duration of one run. */
+    private val runJobs = mutableListOf<kotlinx.coroutines.Job>()
+    private lateinit var historyPrefs: RunHistoryPrefs
 
     @Volatile private var zoneCalc: ZoneCalculator? = null
     @Volatile private var currentSettings: RunSettings = RunSettings()
@@ -101,6 +112,7 @@ object WorkoutController {
         store = SessionStore(ctx)
         recorder = SessionRecorder(scope, store)
         settingsStore = SettingsStore(ctx)
+        historyPrefs = RunHistoryPrefs(ctx)
         voice = VoiceCoach(ctx)
         scope.launch { store.recoverOrphans() }
 
@@ -192,6 +204,20 @@ object WorkoutController {
                 if (movingMs > 0) d / (movingMs / 1000.0) else null
             }
 
+            // Live lap snapshot + delta vs the average of closed laps (sec/mi).
+            val liveLap = if (m.running && stateMachine.state != RunState.WARMUP) {
+                val runDist = (distance ?: 0.0) - (warmupDistanceMeters ?: 0.0)
+                splitTracker.currentLap(runDist, movingMs)
+            } else null
+            val lapDelta = liveLap?.paceMps?.let { cur ->
+                val closed = _splits.mapNotNull { s -> s.avgPaceMps.takeIf { it > 0.1 } }
+                if (cur > 0.1 && closed.isNotEmpty()) {
+                    val curSec = com.example.runh10.shared.Constants.MILE_METERS / cur
+                    val avgSec = closed.map { com.example.runh10.shared.Constants.MILE_METERS / it }.average()
+                    curSec - avgSec
+                } else null
+            }
+
             UiState(
                 running = m.running,
                 hrState = m.bleState.name,
@@ -216,6 +242,10 @@ object WorkoutController {
                 zoneEdges = zoneEdges,
                 gpsLocked = gpsLocked,
                 splits = _splits.toList(),
+                currentLap = liveLap,
+                lapDeltaSecPerMi = lapDelta,
+                hrvMs = rollingRmssd.value(),
+                routePoints = _route.value,
             )
         }.stateIn(scope, SharingStarted.Eagerly, UiState())
     }
@@ -270,15 +300,53 @@ object WorkoutController {
         stateMachine = RunStateMachine()
         splitTracker = SplitTracker()
         rollingPace = RollingPace()
+        rollingRmssd = RollingRmssd()
         voice = VoiceCoach(appContext)
         _splits.clear()
         warmupDistanceMeters = null
+        _route.value = emptyList()
 
         clock.start()
         startTime.value = System.currentTimeMillis()
         running.value = true
         scope.launch { runCatching { exercise.start() } }
         scope.launch { recorder.start(ble.hr, exercise.metrics) }
+
+        // Run-scoped collectors: RR intervals → streaming RMSSD; GPS → decimated trail.
+        runJobs += scope.launch {
+            ble.hr.filterNotNull().collect { s -> s.rrMs.forEach { rollingRmssd.feed(it) } }
+        }
+        runJobs += scope.launch {
+            exercise.metrics.collect { mx ->
+                val lat = mx.lat ?: return@collect
+                val lon = mx.lon ?: return@collect
+                val cur = _route.value
+                val last = cur.lastOrNull()
+                if (last == null || roughMeters(last.first, last.second, lat, lon) >= 10.0) {
+                    // Cap the trail: halve resolution when it grows past 600 points.
+                    _route.value =
+                        if (cur.size >= 600) cur.filterIndexed { i, _ -> i % 2 == 0 } + (lat to lon)
+                        else cur + (lat to lon)
+                }
+            }
+        }
+    }
+
+    /** Equirectangular distance approximation — plenty for 10 m decimation. */
+    private fun roughMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1) * kotlin.math.cos(Math.toRadians((lat1 + lat2) / 2))
+        return kotlin.math.sqrt(dLat * dLat + dLon * dLon) * 6_371_000.0
+    }
+
+    /** Manual lap from the run-controls screen: closes the in-progress segment immediately. */
+    fun manualLap() {
+        if (!running.value || stateMachine.state == RunState.WARMUP) return
+        val ui = uiState.value
+        val runDist = (ui.distanceMeters ?: 0.0) - (warmupDistanceMeters ?: 0.0)
+        val split = splitTracker.closeNow(runDist, clock.movingMs())
+        _splits.add(split)
+        if (currentSettings.announce) voice.say("Lap ${split.index}")
     }
 
     fun manualPause() {
@@ -311,11 +379,31 @@ object WorkoutController {
     }
 
     fun stop() {
+        // Snapshot before flipping running=false so the aggregates are the run's finals.
+        val finalUi = uiState.value
         running.value = false
+        runJobs.forEach { it.cancel() }
+        runJobs.clear()
         ble.disconnect()
         scope.launch { exercise.stop() }
         scope.launch { recorder.stop() }
         voice.shutdown()
+
+        // Persist last-run aggregates for the quick-launch tile's readiness card.
+        val avgBpm = finalUi.splits.filter { it.avgBpm != null }.let { valid ->
+            val w = valid.sumOf { it.movingDurationMs.toDouble() }
+            if (w > 0) (valid.sumOf { it.avgBpm!! * it.movingDurationMs.toDouble() } / w).toInt() else null
+        }
+        scope.launch {
+            historyPrefs.record(
+                name = defaultRunName(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)),
+                endedAtMs = System.currentTimeMillis(),
+                distanceMeters = finalUi.distanceMeters ?: 0.0,
+                elapsedSec = finalUi.elapsedSec,
+                avgBpm = avgBpm,
+                hrvMs = finalUi.hrvMs,
+            )
+        }
     }
 
     private data class Merged(

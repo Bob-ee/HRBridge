@@ -1,12 +1,20 @@
 package com.example.runh10.presentation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,26 +23,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
-import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.Switch
 import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.ToggleChip
-import androidx.wear.compose.material.ToggleChipDefaults
 import com.example.runh10.data.RunSettings
+import com.example.runh10.presentation.components.PulseLogo
+import com.example.runh10.presentation.theme.Heat
 import kotlinx.coroutines.launch
 
+/** Watch settings in HEAT: sensor/GPS/units rows, heart profile, audio coaching toggles. */
 @Composable
 fun SettingsScreen(
     settings: RunSettings,
+    strapName: String?,
+    strapConnected: Boolean,
+    onForgetStrap: () -> Unit,
     onAge: (Int) -> Unit,
     onMaxHr: (Int) -> Unit,
     onMeasureResting: suspend () -> Int,
@@ -47,199 +53,321 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     var measuring by remember { mutableStateOf(false) }
-    var measuredHr by remember { mutableStateOf<Int?>(null) }
     var noStrapData by remember { mutableStateOf(false) }
 
     ScalingLazyColumn(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        modifier = Modifier.fillMaxWidth().background(Heat.bg).padding(horizontal = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         item {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = "Settings",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = MaterialTheme.colors.primary,
+                fontFamily = Heat.sairaCondensed,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 19.sp,
+                color = Heat.text,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+
+        // ── Sensor / GPS / Units rows (mock) ──
+        item {
+            SettingRow(
+                leading = { PulseLogo(16.dp) },
+                title = strapName ?: "Polar H10",
+                trailing = {
+                    Box(
+                        Modifier.size(8.dp).background(
+                            if (strapConnected) Heat.goodGreen else Heat.textFaint,
+                            CircleShape,
+                        ),
+                    )
+                },
+                onClick = onForgetStrap,
+                subtitle = "tap to change strap",
+            )
+        }
+        item {
+            SettingRow(
+                leading = { GpsPin() },
+                title = "GPS",
+                trailing = { ValueText("High") },
+            )
+        }
+        item {
+            SettingRow(
+                leading = { BarsIcon() },
+                title = "Units",
+                trailing = { ValueText("Miles", Heat.brandOrange) },
             )
         }
 
-        // Age stepper
+        // ── Heart profile ──
+        item { SectionLabel("HEART RATE") }
         item {
-            Spacer(Modifier.height(8.dp))
-            androidx.compose.foundation.layout.Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "Age: ${settings.age ?: "—"}",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colors.onBackground,
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Button(
-                        onClick = { onAge(maxOf(1, (settings.age ?: 30) - 1)) },
-                        modifier = Modifier.size(36.dp),
-                        colors = ButtonDefaults.secondaryButtonColors(),
-                    ) { Text("−") }
-                    Button(
-                        onClick = { onAge((settings.age ?: 30) + 1) },
-                        modifier = Modifier.size(36.dp),
-                        colors = ButtonDefaults.secondaryButtonColors(),
-                    ) { Text("+") }
-                }
-            }
+            StepperRow(
+                title = "Age",
+                value = settings.age?.toString() ?: "—",
+                onMinus = { onAge(maxOf(1, (settings.age ?: 30) - 1)) },
+                onPlus = { onAge((settings.age ?: 30) + 1) },
+            )
         }
-
-        // Max HR stepper
         item {
-            Spacer(Modifier.height(8.dp))
-            val ageEstimate = settings.age?.let { 220 - it }
-            val maxHrDisplay = when {
-                settings.maxHr != null -> "${settings.maxHr} bpm"
-                ageEstimate != null -> "~$ageEstimate (est.)"
-                else -> "—"
-            }
-            androidx.compose.foundation.layout.Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "Max HR: $maxHrDisplay",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colors.onBackground,
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Button(
-                        onClick = {
-                            val current = settings.maxHr ?: (settings.age?.let { 220 - it } ?: 180)
-                            onMaxHr(maxOf(100, current - 1))
-                        },
-                        modifier = Modifier.size(36.dp),
-                        colors = ButtonDefaults.secondaryButtonColors(),
-                    ) { Text("−") }
-                    Button(
-                        onClick = {
-                            val current = settings.maxHr ?: (settings.age?.let { 220 - it } ?: 180)
-                            onMaxHr(current + 1)
-                        },
-                        modifier = Modifier.size(36.dp),
-                        colors = ButtonDefaults.secondaryButtonColors(),
-                    ) { Text("+") }
-                }
-            }
+            val ageEstimate = settings.age?.let { (208 - 0.7 * it).toInt() }
+            StepperRow(
+                title = "Max HR",
+                value = settings.maxHr?.toString() ?: (ageEstimate?.let { "~$it" } ?: "—"),
+                onMinus = {
+                    val current = settings.maxHr ?: ageEstimate ?: 180
+                    onMaxHr(maxOf(100, current - 1))
+                },
+                onPlus = {
+                    val current = settings.maxHr ?: ageEstimate ?: 180
+                    onMaxHr(current + 1)
+                },
+            )
         }
-
-        // Measure resting HR
         item {
-            Spacer(Modifier.height(8.dp))
-            val chipLabel = when {
+            val label = when {
                 measuring -> "Measuring… (60s)"
-                noStrapData -> "No strap data"
-                measuredHr != null -> "Rest HR: $measuredHr bpm"
-                settings.restingHr != null -> "Rest HR: ${settings.restingHr} bpm"
+                noStrapData -> "No strap data — wear the H10"
+                settings.restingHr != null -> "Resting HR · ${settings.restingHr} bpm"
                 else -> "Measure resting HR"
             }
-            Chip(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = {
-                    if (!measuring) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .background(
+                        if (measuring) Heat.surface else Heat.surfaceDeep,
+                        RoundedCornerShape(14.dp),
+                    )
+                    .border(1.dp, Color(0xFF1E2A36), RoundedCornerShape(14.dp))
+                    .clickable(enabled = !measuring) {
                         measuring = true
                         scope.launch {
                             val result = onMeasureResting()
-                            if (result > 0) {
-                                measuredHr = result
-                                noStrapData = false
-                            } else {
-                                noStrapData = true
-                            }
+                            noStrapData = result <= 0
                             measuring = false
                         }
                     }
-                },
-                colors = ChipDefaults.primaryChipColors(),
-                label = {
-                    Text(
-                        text = chipLabel,
-                        textAlign = TextAlign.Center,
-                    )
-                },
-            )
+                    .padding(vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    fontFamily = Heat.sairaCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Heat.infoBlue,
+                )
+            }
         }
 
-        // Announcements master toggle
-        item {
-            Spacer(Modifier.height(8.dp))
-            ToggleChip(
-                modifier = Modifier.fillMaxWidth(),
-                checked = settings.announce,
-                onCheckedChange = onToggleAnnounce,
-                label = { Text("Announcements") },
-                toggleControl = { Switch(checked = settings.announce) },
-                colors = ToggleChipDefaults.toggleChipColors(),
-            )
-        }
+        // ── Audio coaching ──
+        item { SectionLabel("AUDIO COACHING") }
+        item { ToggleRow("Voice coach", settings.announce, onToggleAnnounce) }
+        item { ToggleRow("Split time", settings.announceSplitTime, onToggleAnnounceSplit, indent = true) }
+        item { ToggleRow("Pace", settings.announcePace, onToggleAnnouncePace, indent = true) }
+        item { ToggleRow("HR zone", settings.announceHrZone, onToggleAnnounceZone, indent = true) }
+        item { SectionLabel("RUN") }
+        item { ToggleRow("Auto-pause", settings.autoPause, onToggleAutoPause) }
 
         item {
-            ToggleChip(
-                modifier = Modifier.fillMaxWidth(),
-                checked = settings.announceSplitTime,
-                onCheckedChange = onToggleAnnounceSplit,
-                label = { Text("  Split time") },
-                toggleControl = { Switch(checked = settings.announceSplitTime) },
-                colors = ToggleChipDefaults.toggleChipColors(),
-            )
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .background(Heat.surface, RoundedCornerShape(15.dp))
+                    .clickable(onClick = onBack)
+                    .padding(horizontal = 26.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = "BACK",
+                    fontFamily = Heat.sairaCondensed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    letterSpacing = 1.5.sp,
+                    color = Heat.textMuted,
+                )
+            }
+            Spacer(Modifier.height(18.dp))
         }
-        item {
-            ToggleChip(
-                modifier = Modifier.fillMaxWidth(),
-                checked = settings.announcePace,
-                onCheckedChange = onToggleAnnouncePace,
-                label = { Text("  Pace") },
-                toggleControl = { Switch(checked = settings.announcePace) },
-                colors = ToggleChipDefaults.toggleChipColors(),
-            )
-        }
-        item {
-            ToggleChip(
-                modifier = Modifier.fillMaxWidth(),
-                checked = settings.announceHrZone,
-                onCheckedChange = onToggleAnnounceZone,
-                label = { Text("  HR Zone") },
-                toggleControl = { Switch(checked = settings.announceHrZone) },
-                colors = ToggleChipDefaults.toggleChipColors(),
-            )
-        }
+    }
+}
 
-        // Auto-pause toggle
-        item {
-            Spacer(Modifier.height(4.dp))
-            ToggleChip(
-                modifier = Modifier.fillMaxWidth(),
-                checked = settings.autoPause,
-                onCheckedChange = onToggleAutoPause,
-                label = { Text("Auto-pause") },
-                toggleControl = { Switch(checked = settings.autoPause) },
-                colors = ToggleChipDefaults.toggleChipColors(),
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        fontFamily = Heat.sairaCondensed,
+        fontWeight = FontWeight.Bold,
+        fontSize = 11.sp,
+        letterSpacing = 1.8.sp,
+        color = Heat.textDim,
+        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun SettingRow(
+    leading: @Composable () -> Unit,
+    title: String,
+    trailing: @Composable () -> Unit,
+    subtitle: String? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .background(Heat.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, Heat.border, RoundedCornerShape(16.dp))
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        leading()
+        Spacer(Modifier.width(11.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontFamily = Heat.sairaCondensed,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Heat.text,
+            )
+            if (subtitle != null) Text(text = subtitle, fontSize = 10.sp, color = Heat.textDim)
+        }
+        trailing()
+    }
+}
+
+@Composable
+private fun ValueText(text: String, color: Color = Heat.textMuted) {
+    Text(
+        text = text,
+        fontFamily = Heat.sairaCondensed,
+        fontWeight = FontWeight.Bold,
+        fontSize = 13.sp,
+        color = color,
+    )
+}
+
+@Composable
+private fun StepperRow(title: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .background(Heat.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, Heat.border, RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontFamily = Heat.sairaCondensed,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Heat.text,
+            )
+            Text(
+                text = value,
+                fontFamily = Heat.sairaCondensed,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 17.sp,
+                color = Heat.brandOrange,
             )
         }
+        StepBtn("−", onMinus)
+        Spacer(Modifier.width(8.dp))
+        StepBtn("+", onPlus)
+    }
+}
 
-        // Back chip
-        item {
-            Spacer(Modifier.height(8.dp))
-            Chip(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onBack,
-                colors = ChipDefaults.secondaryChipColors(),
-                label = { Text("Back") },
+@Composable
+private fun StepBtn(glyph: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .background(Heat.surfaceDeep, CircleShape)
+            .border(1.dp, Heat.borderStrong, CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = glyph, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Heat.text)
+    }
+}
+
+/** HEAT pill toggle: on = orange, off = slate (mock's switch styling). */
+@Composable
+private fun ToggleRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit, indent: Boolean = false) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = if (indent) 12.dp else 0.dp, top = 3.dp, bottom = 3.dp)
+            .background(Heat.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, Heat.border, RoundedCornerShape(16.dp))
+            .clickable { onChange(!checked) }
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            fontFamily = Heat.sairaCondensed,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            color = Heat.text,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .width(42.dp)
+                .height(24.dp)
+                .background(if (checked) Heat.brandOrange else Heat.borderStrong, RoundedCornerShape(12.dp)),
+            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+        ) {
+            Box(
+                Modifier
+                    .padding(horizontal = 3.dp)
+                    .size(18.dp)
+                    .background(if (checked) Color.White else Heat.textMuted, CircleShape),
             )
-            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun GpsPin() {
+    androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
+        val w = size.width; val h = size.height
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w / 2f, h)
+            cubicTo(w * 0.1f, h * 0.55f, w * 0.08f, h * 0.42f, w * 0.08f, h * 0.35f)
+            cubicTo(w * 0.08f, h * 0.05f, w * 0.92f, h * 0.05f, w * 0.92f, h * 0.35f)
+            cubicTo(w * 0.92f, h * 0.42f, w * 0.9f, h * 0.55f, w / 2f, h)
+            close()
+        }
+        drawPath(p, Heat.infoBlue, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.12f))
+        drawCircle(Heat.infoBlue, radius = w * 0.12f, center = androidx.compose.ui.geometry.Offset(w / 2f, h * 0.33f))
+    }
+}
+
+@Composable
+private fun BarsIcon() {
+    androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
+        val w = size.width; val h = size.height
+        val stroke = w * 0.13f
+        for (frac in listOf(0.2f, 0.5f, 0.8f)) {
+            drawLine(
+                Heat.textMuted,
+                start = androidx.compose.ui.geometry.Offset(0f, h * frac),
+                end = androidx.compose.ui.geometry.Offset(w, h * frac),
+                strokeWidth = stroke,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            )
         }
     }
 }

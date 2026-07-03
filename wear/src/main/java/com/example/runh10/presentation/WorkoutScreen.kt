@@ -1,22 +1,14 @@
 package com.example.runh10.presentation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,20 +16,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.ButtonDefaults
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
-import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.example.runh10.data.RunSettings
-import com.example.runh10.presentation.components.ZoneRing
-import com.example.runh10.presentation.components.zoneColor
+import com.example.runh10.media.WatchMediaClient
+import com.example.runh10.presentation.theme.Heat
 import com.example.runh10.workout.RunState
 import com.example.runh10.workout.ScanDevice
 import com.example.runh10.workout.UiState
@@ -49,17 +35,33 @@ fun PermissionScreen(onRequest: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .background(Heat.bg)
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Run H10 needs sensors, location & Bluetooth",
+            text = "HR Bridge needs sensors, location & Bluetooth",
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colors.onBackground,
+            fontSize = 13.sp,
+            color = Heat.text,
         )
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onRequest) { Text("Grant") }
+        Spacer(Modifier.height(14.dp))
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .background(Heat.brandGradient, RoundedCornerShape(16.dp))
+                .clickable(onClick = onRequest)
+                .padding(horizontal = 26.dp, vertical = 10.dp),
+        ) {
+            Text(
+                text = "GRANT",
+                fontFamily = Heat.sairaCondensed,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.sp,
+                letterSpacing = 1.4.sp,
+                color = Heat.text,
+            )
+        }
     }
 }
 
@@ -69,6 +71,7 @@ fun WorkoutFlow(
     devices: List<ScanDevice>,
     remembered: ScanDevice?,
     settings: RunSettings,
+    media: WatchMediaClient,
     ambientState: AmbientState = AmbientState(),
     onScan: () -> Unit,
     onPick: (String) -> Unit,
@@ -78,6 +81,7 @@ fun WorkoutFlow(
     onDone: () -> Unit,
     onPauseToggle: () -> Unit,
     onStartNow: () -> Unit,
+    onLap: () -> Unit,
     onAge: (Int) -> Unit,
     onMaxHr: (Int) -> Unit,
     onMeasureResting: suspend () -> Int,
@@ -96,12 +100,14 @@ fun WorkoutFlow(
             ui = summaryUi!!,
             onDone = onDone,
         )
-        ui.running -> ActiveScreen(
+        ui.running -> RunExperience(
             ui = ui,
             ambientState = ambientState,
+            media = media,
             onPauseToggle = onPauseToggle,
             onStartNow = onStartNow,
-            onEnd = {
+            onLap = onLap,
+            onFinish = {
                 summaryUi = ui
                 showSummary = true
                 onEnd()
@@ -109,6 +115,12 @@ fun WorkoutFlow(
         )
         showSettings -> SettingsScreen(
             settings = settings,
+            strapName = remembered?.name,
+            strapConnected = ui.hrState == "CONNECTED",
+            onForgetStrap = {
+                showSettings = false
+                onForget()
+            },
             onAge = onAge,
             onMaxHr = onMaxHr,
             onMeasureResting = onMeasureResting,
@@ -119,376 +131,17 @@ fun WorkoutFlow(
             onToggleAutoPause = onToggleAutoPause,
             onBack = { showSettings = false },
         )
-        else -> PrepScreen(
+        else -> ReadyScreen(
             ui = ui,
             devices = devices,
             remembered = remembered,
             onScan = onScan,
             onPick = onPick,
-            onForget = onForget,
             onStart = onStart,
             onSettings = { showSettings = true },
         )
     }
 }
-
-@Composable
-private fun PrepScreen(
-    ui: UiState,
-    devices: List<ScanDevice>,
-    remembered: ScanDevice?,
-    onScan: () -> Unit,
-    onPick: (String) -> Unit,
-    onForget: () -> Unit,
-    onStart: () -> Unit,
-    onSettings: () -> Unit,
-) {
-    if (remembered != null) {
-        // Remembered or just-picked device: show strap status, a big Start button
-        // (enabled only once CONNECTED), and a secondary Change strap control.
-        // The Prep screen persists here until the user taps Start — the run does
-        // NOT begin until they do so.
-        val isConnected = ui.hrState == "CONNECTED"
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = if (isConnected) "Connected to ${remembered.name}" else "Connecting to ${remembered.name}…",
-                textAlign = TextAlign.Center,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colors.primary,
-            )
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = onStart,
-                enabled = isConnected,
-            ) { Text("Start") }
-            Spacer(Modifier.height(12.dp))
-            Chip(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp),
-                onClick = onForget,
-                colors = ChipDefaults.secondaryChipColors(),
-                label = { Text("Change strap") },
-            )
-            Chip(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp),
-                onClick = onSettings,
-                colors = ChipDefaults.secondaryChipColors(),
-                label = { Text("Settings") },
-            )
-        }
-    } else {
-        // No remembered device: show scan UI.
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "Pair H10",
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colors.primary,
-            )
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = onScan) { Text("Scan") }
-            Spacer(Modifier.height(8.dp))
-            if (devices.isEmpty()) {
-                Text(
-                    text = "No straps yet — tap Scan and wake the H10.",
-                    textAlign = TextAlign.Center,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colors.onBackground,
-                )
-            } else {
-                devices.forEach { device ->
-                    Chip(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
-                        onClick = { onPick(device.address) },
-                        colors = ChipDefaults.primaryChipColors(),
-                        label = { Text(device.name) },
-                        secondaryLabel = { Text("${device.rssi} dBm") },
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Chip(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp),
-                onClick = onSettings,
-                colors = ChipDefaults.secondaryChipColors(),
-                label = { Text("Settings") },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ActiveScreen(
-    ui: UiState,
-    ambientState: AmbientState = AmbientState(),
-    onPauseToggle: () -> Unit,
-    onStartNow: () -> Unit,
-    onEnd: () -> Unit,
-) {
-    if (ambientState.isAmbient) {
-        AmbientActiveScreen(ui = ui, ambientState = ambientState)
-        return
-    }
-
-    val paused = ui.runState == RunState.AUTO_PAUSED || ui.runState == RunState.MANUAL_PAUSED
-    val warmup = ui.runState == RunState.WARMUP
-    val sweep = ui.hrZone?.let { it.toFloat() / 5f } ?: 0.2f
-
-    Box(Modifier.fillMaxSize()) {
-        // Edge ring — full screen overlay
-        ZoneRing(
-            zone = ui.hrZone,
-            sweepFraction = sweep,
-            dim = warmup,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            // GPS lock indicator
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(
-                            color = if (ui.gpsLocked) Color(0xFF34C759) else Color(0xFF666666),
-                            shape = CircleShape,
-                        ),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text = if (ui.gpsLocked) "GPS" else "GPS…",
-                    fontSize = 9.sp,
-                    color = if (ui.gpsLocked) Color(0xFF34C759) else Color(0xFF666666),
-                )
-            }
-
-            Spacer(Modifier.height(2.dp))
-
-            // Status pill
-            when (ui.runState) {
-                RunState.WARMUP -> StatePill("WARMING UP", Color(0xFFFFCF6A))
-                RunState.AUTO_PAUSED -> StatePill("AUTO-PAUSED", Color(0xFFFFCF6A))
-                RunState.MANUAL_PAUSED -> StatePill("PAUSED", Color(0xFFC6A6FF))
-                else -> Spacer(Modifier.height(16.dp))
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            // Hero moving time
-            Text(
-                text = formatElapsed(ui.movingSec),
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (paused) Color(0xFF4A4A4A) else Color.White,
-            )
-            Text(
-                text = "MOVING TIME",
-                fontSize = 9.sp,
-                color = Color(0xFF666666),
-                letterSpacing = 1.sp,
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            // Metrics row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                MetricCompact(
-                    label = "mi",
-                    value = formatMilesShort(ui.distanceMeters),
-                    dim = paused,
-                )
-                MetricCompact(
-                    label = "/mi",
-                    value = if (warmup || ui.rollingPaceMps == null) "—" else formatPace(ui.rollingPaceMps),
-                    dim = paused,
-                )
-                MetricCompact(
-                    label = "bpm",
-                    value = ui.bpm?.toString() ?: "—",
-                    valueColor = zoneColor(ui.hrZone),
-                    dim = false, // HR always bright
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // Controls
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (warmup) {
-                    ControlButton(label = "▶", onClick = onStartNow)
-                } else {
-                    ControlButton(
-                        label = if (paused) "▶" else "⏸",
-                        onClick = onPauseToggle,
-                    )
-                }
-                ControlButton(label = "■", onClick = onEnd, danger = true)
-            }
-        }
-    }
-}
-
-/**
- * Low-power layout shown while the watch is in ambient mode. The FGS keeps
- * recording; this just renders a burn-in-safe, near-black snapshot. Fast-moving
- * metrics (HR, pace) show "--" because they are only refreshed on ambient ticks;
- * the run time + distance (monotonic) are shown.
- */
-@Composable
-private fun AmbientActiveScreen(ui: UiState, ambientState: AmbientState) {
-    // Burn-in protection: nudge content a couple px off-center so static text
-    // doesn't sit on the same pixels for the whole ambient session.
-    val shift = if (ambientState.burnInProtection) 3.dp else 0.dp
-
-    // Low-bit ambient panels have a tiny color depth — restrict to pure white/gray
-    // (no fractional-luminance tones the panel can't reproduce cleanly).
-    val timeColor = if (ambientState.lowBitAmbient) Color.White else Color(0xFFBFBFBF)
-    val labelColor = if (ambientState.lowBitAmbient) Color.White else Color(0xFF666666)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-    ) {
-        // Outline-only ring (no fill, no alpha) — honors low-bit panels.
-        ZoneRing(
-            zone = ui.hrZone,
-            sweepFraction = 0f,
-            dim = false,
-            ambient = true,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(x = shift, y = shift)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = formatElapsed(ui.movingSec),
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
-                color = timeColor,
-            )
-            Text(
-                text = "MOVING TIME",
-                fontSize = 9.sp,
-                color = labelColor,
-                letterSpacing = 1.sp,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                MetricCompact(label = "mi", value = formatMilesShort(ui.distanceMeters), dim = true)
-                MetricCompact(label = "/mi", value = "--", dim = true)
-                MetricCompact(label = "bpm", value = "--", dim = true)
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatePill(text: String, color: Color) {
-    Box(
-        modifier = Modifier
-            .background(color = color.copy(alpha = 0.2f), shape = RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp, vertical = 3.dp),
-    ) {
-        Text(
-            text = text,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = color,
-            letterSpacing = 0.5.sp,
-        )
-    }
-}
-
-@Composable
-private fun ControlButton(
-    label: String,
-    onClick: () -> Unit,
-    danger: Boolean = false,
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.size(36.dp),
-        colors = if (danger)
-            ButtonDefaults.buttonColors(backgroundColor = Color(0xFF7A1010))
-        else
-            ButtonDefaults.secondaryButtonColors(),
-    ) {
-        Text(text = label, fontSize = 14.sp)
-    }
-}
-
-@Composable
-private fun MetricCompact(
-    label: String,
-    value: String,
-    dim: Boolean = false,
-    valueColor: Color? = null,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = when {
-                valueColor != null -> valueColor
-                dim -> Color(0xFF4A4A4A)
-                else -> Color.White
-            },
-        )
-        Text(
-            text = label,
-            fontSize = 9.sp,
-            color = Color(0xFF666666),
-        )
-    }
-}
-
 
 internal fun formatElapsed(sec: Long): String {
     val m = sec / 60

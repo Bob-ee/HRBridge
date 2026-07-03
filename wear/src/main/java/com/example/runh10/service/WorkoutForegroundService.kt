@@ -113,7 +113,7 @@ class WorkoutForegroundService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Run H10")
+            .setContentTitle("HR Bridge")
             .setContentText("Recording run…")
             .setSmallIcon(R.drawable.splash_icon)
             .setOngoing(true)

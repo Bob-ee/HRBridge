@@ -26,7 +26,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.ambient.AmbientLifecycleObserver
 import androidx.wear.compose.material.MaterialTheme
 import com.example.runh10.data.SettingsStore
-import com.example.runh10.presentation.theme.RunH10Theme
+import com.example.runh10.media.WatchMediaClient
+import com.example.runh10.presentation.theme.HeatTheme
 import com.example.runh10.service.WorkoutForegroundService
 import com.example.runh10.workout.RunState
 import com.example.runh10.workout.WorkoutController
@@ -78,15 +79,23 @@ class MainActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
+    /** Media bridge client — created once; RunExperience starts it when shown. */
+    private lateinit var mediaClient: WatchMediaClient
+
+    /** Set when launched from the tile's START RUN: auto-begin once the strap connects. */
+    private var tileAutoStart = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ambientObserver = AmbientLifecycleObserver(this, ambientCallback)
         lifecycle.addObserver(ambientObserver)
         WorkoutController.init(applicationContext)
         val settingsStore = SettingsStore(applicationContext)
+        mediaClient = WatchMediaClient(applicationContext)
+        if (isTileStartIntent(intent)) tileAutoStart.value = true
 
         setContent {
-            RunH10Theme {
+            HeatTheme {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -126,11 +135,21 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        // Tile START RUN: begin as soon as the strap link is up.
+                        val autoStartPending by tileAutoStart
+                        LaunchedEffect(ui.hrState, autoStartPending, ui.running) {
+                            if (autoStartPending && !ui.running && ui.hrState == "CONNECTED") {
+                                tileAutoStart.value = false
+                                beginRun()
+                            }
+                        }
+
                         WorkoutFlow(
                             ui = ui,
                             devices = devices,
                             remembered = pendingDevice,
                             settings = settings,
+                            media = mediaClient,
                             ambientState = ambientState,
                             onScan = { WorkoutController.startScan() },
                             onPick = { address -> connectStrap(address, autoConnect = false) },
@@ -145,6 +164,7 @@ class MainActivity : ComponentActivity() {
                                     WorkoutController.manualPause()
                             },
                             onStartNow = { WorkoutController.startNow() },
+                            onLap = { WorkoutController.manualLap() },
                             onAge = { v -> scope.launch { settingsStore.setAge(v) } },
                             onMaxHr = { v -> scope.launch { settingsStore.setMaxHr(v) } },
                             onMeasureResting = {
@@ -189,6 +209,25 @@ class MainActivity : ComponentActivity() {
 
     private fun finishWorkout() {
         finishAndRemoveTask()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (isTileStartIntent(intent)) tileAutoStart.value = true
+    }
+
+    private fun isTileStartIntent(intent: Intent?): Boolean =
+        intent?.action == ACTION_TILE_START_RUN || intent?.getBooleanExtra(EXTRA_TILE_START, false) == true
+
+    override fun onDestroy() {
+        mediaClient.shutdown()
+        super.onDestroy()
+    }
+
+    companion object {
+        /** Launched by the quick-launch tile's START RUN action. */
+        const val ACTION_TILE_START_RUN = "com.example.runh10.action.TILE_START_RUN"
+        const val EXTRA_TILE_START = "tile_start_run"
     }
 }
 

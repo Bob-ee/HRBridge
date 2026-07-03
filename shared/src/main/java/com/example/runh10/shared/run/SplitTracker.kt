@@ -3,6 +3,14 @@ package com.example.runh10.shared.run
 import com.example.runh10.shared.Constants
 import com.example.runh10.shared.model.Split
 
+/** Live (not yet closed) lap snapshot for the in-run Laps screen. */
+data class LiveLap(
+    val index: Int,
+    val distanceM: Double,
+    val paceMps: Double?,
+    val avgBpm: Int?,
+)
+
 class SplitTracker(private val splitMeters: Double = Constants.MILE_METERS) {
     private var index = 0
     private var segStartDist = 0.0
@@ -18,6 +26,22 @@ class SplitTracker(private val splitMeters: Double = Constants.MILE_METERS) {
             nextBoundary += splitMeters
             s
         } else null
+    }
+
+    /** Snapshot of the lap currently in progress (index is 1-based, so lap 1 while none closed). */
+    fun currentLap(cumulativeDistanceM: Double, movingMs: Long): LiveLap {
+        val dist = (cumulativeDistanceM - segStartDist).coerceAtLeast(0.0)
+        val dur = movingMs - segStartMovingMs
+        val pace = if (dur > 1000 && dist > 1.0) dist / (dur / 1000.0) else null
+        val avgBpm = if (bpmCount > 0) (bpmSum / bpmCount).toInt() else null
+        return LiveLap(index + 1, dist, pace, avgBpm)
+    }
+
+    /** Manual lap: close the in-progress segment now; the next auto boundary is one full split away. */
+    fun closeNow(cumulativeDistanceM: Double, movingMs: Long): Split {
+        val s = close(cumulativeDistanceM, movingMs)
+        nextBoundary = cumulativeDistanceM + splitMeters
+        return s
     }
 
     private fun accumulate(bpm: Int?, alt: Double?) {

@@ -39,4 +39,12 @@ data class UiState(
     val zoneEdges: List<Int> = emptyList(),
     val gpsLocked: Boolean = false,
     val splits: List<Split> = emptyList(),
+    /** In-progress lap snapshot (index/pace/avg HR) for the Laps screen. */
+    val currentLap: com.example.runh10.shared.run.LiveLap? = null,
+    /** Current-lap pace minus avg closed-lap pace, in sec/mi (negative = faster). */
+    val lapDeltaSecPerMi: Double? = null,
+    /** Whole-run streaming RMSSD in ms. */
+    val hrvMs: Double? = null,
+    /** Decimated lat/lon trail for the summary route sketch. */
+    val routePoints: List<Pair<Double, Double>> = emptyList(),
 )
