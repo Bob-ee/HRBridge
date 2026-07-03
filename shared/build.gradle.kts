@@ -16,6 +16,8 @@ android {
 }
 
 dependencies {
-    implementation(libs.kotlinx.serialization.json)
+    api(libs.kotlinx.serialization.json)
+    // StateFlow + scopes for the shared BLE client (api: consumers touch these types)
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     testImplementation(libs.junit)
 }

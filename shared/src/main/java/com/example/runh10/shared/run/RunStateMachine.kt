@@ -1,4 +1,4 @@
-package com.example.runh10.workout
+package com.example.runh10.shared.run
 
 enum class RunState { WARMUP, RUNNING, AUTO_PAUSED, MANUAL_PAUSED }
 enum class RunEvent { RUN_DETECTED, AUTO_PAUSED, AUTO_RESUMED, MANUAL_PAUSED, RESUMED }

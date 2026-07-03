@@ -1,4 +1,4 @@
-package com.example.runh10.ble
+package com.example.runh10.shared.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
@@ -16,8 +16,8 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
-import com.example.runh10.workout.HrSample
-import com.example.runh10.workout.ScanDevice
+import com.example.runh10.shared.run.HrSample
+import com.example.runh10.shared.run.ScanDevice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,9 +34,10 @@ import java.util.UUID
  * Raw-GATT client for a standard BLE Heart Rate device (Polar H10).
  * Scans by the Heart Rate service UUID, subscribes to Heart Rate Measurement (0x2A37),
  * parses HR + RR per the BLE Heart Rate Profile, and auto-reconnects on dropout.
+ * Shared between the watch app and the phone record flow.
  *
- * Permissions (BLUETOOTH_SCAN/CONNECT) are requested by the Activity before any call here,
- * so the calls are annotated MissingPermission.
+ * Permissions (BLUETOOTH_SCAN/CONNECT) are requested by the host app before any call
+ * here, so the calls are annotated MissingPermission.
  */
 @SuppressLint("MissingPermission")
 class HeartRateBleClient(private val context: Context) {

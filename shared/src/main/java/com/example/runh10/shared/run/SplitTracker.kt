@@ -1,4 +1,4 @@
-package com.example.runh10.workout
+package com.example.runh10.shared.run
 
 import com.example.runh10.shared.Constants
 import com.example.runh10.shared.model.Split

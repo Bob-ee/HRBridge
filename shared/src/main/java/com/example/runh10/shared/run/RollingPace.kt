@@ -1,4 +1,4 @@
-package com.example.runh10.workout
+package com.example.runh10.shared.run
 
 import java.util.ArrayDeque
 

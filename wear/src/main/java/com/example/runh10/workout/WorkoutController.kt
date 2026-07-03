@@ -1,7 +1,7 @@
 package com.example.runh10.workout
 
 import android.content.Context
-import com.example.runh10.ble.HeartRateBleClient
+import com.example.runh10.shared.ble.HeartRateBleClient
 import com.example.runh10.data.DevicePrefs
 import com.example.runh10.data.RunSettings
 import com.example.runh10.data.SettingsStore
