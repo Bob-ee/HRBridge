@@ -119,6 +119,8 @@ class RunRepository(private val context: Context) {
                 val hrs = bundle.samples.filterIsInstance<HrRow>()
                 val kcal = CalorieEstimator.kcal(hrs, weightKg, age, male) ?: return@runCatching
                 dao.updateKcal(row.sessionId, kcal)
+                // Re-push to HC for runs already synced before profile was completed; idempotent by clientRecordId.
+                dao.markHcPending(row.sessionId, true)
                 updated++
             }
         }
