@@ -85,6 +85,14 @@ object WorkoutController {
     private val runJobs = mutableListOf<kotlinx.coroutines.Job>()
     private lateinit var historyPrefs: RunHistoryPrefs
 
+    // --- GPS re-engagement / fallback state (see GpsReengageDecider) ---
+    /** Wall-clock of the last REENGAGE attempt this run (0 = none / cleared on recovery). */
+    @Volatile private var lastReengageAtMs: Long = 0L
+    /** True while the direct FusedLocationProvider fallback is streaming. */
+    @Volatile private var fallbackActive: Boolean = false
+    /** The live fallback stream, non-null only while [fallbackActive]. */
+    private var fallback: com.example.runh10.exercise.FusedLocationFallback? = null
+
     @Volatile private var zoneCalc: ZoneCalculator? = null
     @Volatile private var currentSettings: RunSettings = RunSettings()
     /** Wall-clock time of the last HR sample, from any BLE connection (Ready or Live). */
@@ -321,6 +329,8 @@ object WorkoutController {
         _splits.clear()
         warmupDistanceMeters = null
         _route.value = emptyList()
+        lastReengageAtMs = 0L
+        stopFallback()
 
         clock.start()
         startTime.value = System.currentTimeMillis()
@@ -345,6 +355,70 @@ object WorkoutController {
                         else cur + (lat to lon)
                 }
             }
+        }
+
+        // GPS-cutout defence: on a ~1 Hz tick, ask the pure decider whether Health
+        // Services location has gone silent mid-run and act on its verdict. Every
+        // transition (REENGAGE / FALLBACK / recovery) leaves an EvtRow via the gps
+        // field so the next outdoor run proves or disproves the diagnosis.
+        runJobs += scope.launch {
+            ticker.collect { now ->
+                val lastLoc = exercise.lastHsLocationAtMs
+                val hsHealthy = lastLoc != 0L &&
+                    now - lastLoc <= GpsReengageDecider.NO_FIX_THRESHOLD_MS
+                if (hsHealthy) {
+                    // HS delivering again → clear the attempt clock and tear the fallback down.
+                    lastReengageAtMs = 0L
+                    if (fallbackActive) stopFallback()
+                }
+                // Before the first fix, measure silence from run start so a GPS that
+                // never acquires still escalates once RUNNING.
+                val msSinceLoc = now - (if (lastLoc == 0L) startTime.value else lastLoc)
+                val msSinceAttempt = if (lastReengageAtMs == 0L) null else now - lastReengageAtMs
+                when (
+                    GpsReengageDecider.decide(
+                        gpsAvailability = exercise.metrics.value.gps,
+                        runState = stateMachine.state,
+                        msSinceLastLoc = msSinceLoc,
+                        msSinceLastReengageAttempt = msSinceAttempt,
+                    )
+                ) {
+                    GpsReengageAction.REENGAGE -> {
+                        lastReengageAtMs = now
+                        scope.launch { runCatching { exercise.reengage() } }
+                    }
+                    GpsReengageAction.FALLBACK -> startFallback()
+                    GpsReengageAction.NONE -> Unit
+                }
+            }
+        }
+    }
+
+    /** Starts the direct FusedLocationProvider fallback (idempotent). */
+    private fun startFallback() {
+        if (fallbackActive) return
+        fallbackActive = true
+        exercise.beginFallback()   // announces gps=FALLBACK_ACTIVE (EvtRow)
+        val fb = com.example.runh10.exercise.FusedLocationFallback(appContext) { loc ->
+            exercise.pushFallbackLocation(
+                lat = loc.latitude,
+                lon = loc.longitude,
+                alt = if (loc.hasAltitude()) loc.altitude else null,
+                acc = if (loc.hasAccuracy()) loc.accuracy.toDouble() else null,
+                speed = if (loc.hasSpeed()) loc.speed.toDouble() else null,
+            )
+        }
+        fallback = fb
+        fb.start()
+    }
+
+    /** Stops the fallback and restores the real HS gps string (idempotent). */
+    private fun stopFallback() {
+        fallback?.stop()
+        fallback = null
+        if (fallbackActive) {
+            fallbackActive = false
+            exercise.endFallback()   // EvtRow transition away from FALLBACK_ACTIVE
         }
     }
 
@@ -400,6 +474,7 @@ object WorkoutController {
         running.value = false
         runJobs.forEach { it.cancel() }
         runJobs.clear()
+        stopFallback()
         ble.disconnect()
         scope.launch { exercise.stop() }
         scope.launch { recorder.stop() }

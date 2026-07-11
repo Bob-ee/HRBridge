@@ -61,6 +61,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
 
     implementation(libs.kotlinx.coroutines.play.services)
+    // Direct FusedLocationProvider stream for the GPS-cutout fallback (same pinned
+    // version the mobile module uses). The typed location FGS + wake lock entitle us
+    // to run this in-process when Health Services stops delivering location mid-run.
+    implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation(project(":shared"))
 
     // Quick-launch tile (HEAT redesign)
