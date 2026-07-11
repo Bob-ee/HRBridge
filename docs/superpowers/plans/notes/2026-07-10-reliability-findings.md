@@ -62,7 +62,7 @@ Concrete sequence:
 2. Process is killed (low memory / permission revoke / reboot). Everything in the
    `PhoneRecordController` singleton is lost, including `meta` (the only copy of the session's
    `SessionMeta` — it lives in memory at `:120/:265`, never persisted).
-3. On restart, `RecordForegroundService` is `START_STICKY` (`RecordForegroundService.kt:41`) and is
+3. On restart, `RecordForegroundService` is `START_STICKY` (`RecordForegroundService.kt:40`) and is
    re-created with a **null** intent, so `when (intent?.action)` matches no branch (`:28-39`) —
    `startAsForeground()` is never re-called and no recording is re-established.
 4. There is **no orphan recovery on the phone**: `grep` for `recoverOrphans`/`SessionState.RECORDING`
@@ -105,11 +105,10 @@ Note (benign): under the normal flow the service calls `startAsForeground()` twi
 Every reader goes through `NdjsonSerializer.decodeTolerant`, which trims blanks and
 `runCatching`-drops any line that fails to parse (`shared/.../serial/NdjsonSerializer.kt:17-22`).
 `SessionParser.parse` uses it (`mobile/.../parse/SessionParser.kt:9-12`), as does the watch orphan
-scan when it reads the last timestamp (`SessionStore.kt:52-56` reads `lastOrNull { isNotBlank }` and
-tolerates a missing `"ts"` by falling back to `startEpochMs`). A crash-truncated final line is
-therefore skipped, not fatal. The watch flushes per line so at most the tail line is torn
-(`SessionRecorder.kt:74`). **Robust.** (The phone's *whole* un-flushed tail loss is a different
-defect — F1 — not a partial-line-parsing problem.)
+scan when it reads the last timestamp (`SessionStore.kt:53-55` uses a hand-rolled regex to extract
+`"ts"` and falls back to `startEpochMs`). A crash-truncated final line is therefore skipped, not fatal.
+The watch flushes per line so at most the tail line is torn (`SessionRecorder.kt:74`). **Robust.**
+(The phone's *whole* un-flushed tail loss is a different defect — F1 — not a partial-line-parsing problem.)
 
 ---
 
@@ -145,7 +144,7 @@ Neither writer guards the I/O:
 - Phone: `PhoneRecordController.writeRow` is `@Synchronized w.write(...); w.newLine()` with no
   try/catch (`mobile/.../record/PhoneRecordController.kt:422-427`). It is called both from the HR
   collector coroutine (`:284-294`) **and directly from `locationCallback.onLocationResult` on the
-  main looper** (`:223-233`). A disk-full throw on the location path is an uncaught exception on the
+  main looper** (`:223-232`). A disk-full throw on the location path is an uncaught exception on the
   main thread → immediate crash. And per F1, the crash then loses the in-progress run.
 
 This violates "never dies mid-run." A one-line `runCatching` around each write (degrading to an
@@ -189,10 +188,10 @@ cannot infinitely re-fail — a session. **Robust.**
 
 Unsynced *watch* sessions live on the watch's Room + files until ACKed
 (`wear/.../session/SessionStore.kt`, purge only on ACK `WearSyncService.kt:44-48`); a phone reboot
-does not touch them. Sync is user-triggered (`mobile/.../ui/SyncViewModel.kt` → `PhoneSyncClient.sync`),
-and `findWatchNode` re-resolves the node each pass (`PhoneSyncClient.kt:100-106`), so after reboot the
-next manual sync simply re-pulls. Already-ingested phone runs persist in Room + `filesDir/sessions`
-(`RunRepository`), surviving reboot.
+does not touch them. Sync is triggered from `SyncViewModel.onResume()` (auto-syncs when Health Connect is
+ready and idle, `mobile/.../ui/SyncViewModel.kt`) as well as manually, and `findWatchNode` re-resolves
+the node each pass (`PhoneSyncClient.kt:100-106`), so after reboot the next sync attempt simply re-pulls.
+Already-ingested phone runs persist in Room + `filesDir/sessions` (`RunRepository`), surviving reboot.
 
 The only reboot-time loss is an **in-progress phone-recorded run** (in-memory singleton, un-flushed
 buffer, no recovery) — already captured as **F1 (P1)**.
@@ -218,6 +217,22 @@ playing". **No crash, no fake media data.** See F7 for the UX gap.
 ---
 
 ## Cross-cutting findings
+
+### F3 — Live UI shows stale HR during a BLE outage with no staleness indicator — **P2**
+
+Failure sequence: strap drops → reconnect backoff runs for tens of seconds
+(`HeartRateBleClient.kt:162-166`, capped 1→2→4→8→10 s) → `_hr` SharedFlow keeps replaying the last
+`HrSample` via `replay=1` (`shared/.../ble/HeartRateBleClient.kt:66-71`) → UI renders `ui.bpm`
+unconditionally without a staleness indicator (`wear/.../presentation/RunExperience.kt:149`), displaying
+a frozen bpm as if still live. The phone live UI via `PhoneRecordController`'s hr collector has the same
+exposure.
+
+The saved session file is unaffected — it honestly shows a gap rather than stale samples — so this is
+display-only, not data loss.
+
+Fix shape: emit a staleness marker (e.g., a timestamp on the UI's bpm source) and dim/dash the display
+after N seconds without a fresh sample, or emit a sentinel in the `_hr` flow (e.g., `null` or a marker)
+and render an explicit "stale" indicator when the live value ages past reconnect-backoff timeouts.
 
 ### F5 — Phone-recorded HC write is best-effort with no retry; a mid-batch failure silently leaves partial data — **P2**
 
