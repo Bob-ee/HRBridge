@@ -189,6 +189,7 @@ class WorkoutForegroundService : Service() {
     private fun stopWorkout() {
         statusUpdateJob?.cancel()
         statusUpdateJob = null
+        foregrounded = false
         WorkoutController.stop()
         releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -197,6 +198,7 @@ class WorkoutForegroundService : Service() {
 
     override fun onDestroy() {
         statusUpdateJob?.cancel()
+        foregrounded = false
         serviceScope.cancel()
         releaseWakeLock()
         super.onDestroy()
