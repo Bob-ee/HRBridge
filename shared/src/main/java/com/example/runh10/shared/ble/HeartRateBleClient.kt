@@ -115,6 +115,10 @@ class HeartRateBleClient(private val context: Context) {
     }
 
     fun connect(address: String, autoConnect: Boolean = false) {
+        // Already live on this strap — a redundant connect (e.g. Activity recreation
+        // re-running auto-connect) must not tear down a healthy GATT.
+        if (_state.value == State.CONNECTED && targetAddress == address) return
+
         stopScan()
         targetAddress = address
         wantConnected = true
