@@ -222,3 +222,12 @@ All 8 target screens captured: `01-feed.png`, `02-run-detail.png`, `04-trends.pn
 No other broken/clipped/misaligned layout was observed. Feed, Run Detail, Trends, Profile, and Record Ready all structurally match their mock counterparts (stat rows, zone bar, map hero, HR profile cards, sensor/GPS cards) modulo the sparse real data (one 0.05 mi run) which is a data-state artifact, not a UI bug.
 
 **Total findings: 3 (P1: 1, P2: 1, P3: 1).**
+
+---
+
+## 2026-07-11 fix-verification (P1 + P2)
+
+Device: Pixel 9 Pro, `100.113.206.32:33705`, `mobile-debug.apk` rebuilt from this fix wave (`git` branch `master`, working tree). `./gradlew :mobile:testDebugUnitTest :mobile:assembleDebug` → BUILD SUCCESSFUL. Installed with `adb install -r --user 0`; `dumpsys package com.example.runh10` confirms `User 10: installed=false` (no stray user-10 shadow copy). Screenshots: `.../scratchpad/phone-audit/fix-verify/`.
+
+- **P1 — Settings scroll clips below the status bar: FIXED.** `SettingsScreen.kt`'s root `Column` now splits `bottomPadding` around `verticalScroll` (`padding(top = calculateTopPadding()).verticalScroll(...).padding(bottom = calculateBottomPadding())`), matching FeedScreen's `contentPadding` idiom. On-device: `03-settings-top.png` (unscrolled, clean) → full scroll to the bottom via swipe → `04-settings-scrolled.png` shows the UNITS pill fully scrolled out from under the status bar, clock/wifi/battery icons unobstructed, Auto-pause visible as the last row. No collision.
+- **P2 — Watch tab sync log duplicate rows: FIXED.** Root cause: `SyncViewModel.onResume()`/`syncNow()` append a fresh progress line to `state.log` on every sync pass, even when nothing changed, so repeated resumes/manual syncs accumulate runs of identical consecutive `"No unsynced runs"` entries. Fixed in `WatchTabScreen.kt` by collapsing consecutive-duplicate lines before rendering (real distinct entries still render as before). On-device: `08-watchtab.png` shows a single `"No unsynced runs"` line; tapped SYNC NOW five more times and re-screenshotted (`09-watchtab-after-syncs.png`) — still exactly one line, no reaccumulation.

@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -97,11 +98,23 @@ fun WatchTabScreen(
         Spacer(Modifier.height(16.dp))
 
         if (state.log.isNotEmpty()) {
+            // Every resume/auto-sync appends a fresh progress line, even when nothing
+            // changed (e.g. repeated "No unsynced runs"), so the raw log accumulates
+            // runs of identical consecutive entries. Collapse those to one line each —
+            // matching the app's other single-line empty states (e.g. Trends' "Not
+            // enough runs with HRV yet") — while leaving genuinely distinct entries
+            // (different runs synced) rendered as-is.
+            val displayLog = remember(state.log) {
+                state.log.takeLast(14).fold(mutableListOf<String>()) { acc, line ->
+                    if (acc.lastOrNull() != line) acc.add(line)
+                    acc
+                }
+            }
             SectionLabel("SYNC LOG")
             Spacer(Modifier.height(8.dp))
             HeatCard(Modifier.fillMaxWidth(), padding = 14.dp, background = Heat.surfaceDeep) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    state.log.takeLast(14).forEach { line ->
+                    displayLog.forEach { line ->
                         Text(
                             line,
                             fontSize = 12.sp,

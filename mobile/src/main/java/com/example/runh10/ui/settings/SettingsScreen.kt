@@ -62,8 +62,9 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .background(Heat.bg)
+            .padding(top = bottomPadding.calculateTopPadding())
             .verticalScroll(rememberScrollState())
-            .padding(bottomPadding)
+            .padding(bottom = bottomPadding.calculateBottomPadding())
             .padding(horizontal = 24.dp),
     ) {
         Spacer(Modifier.height(12.dp))
