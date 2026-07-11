@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -121,6 +122,7 @@ private fun ReadyContent(ui: PhoneRunUi, profile: AthleteProfile, onClose: () ->
         Modifier
             .fillMaxSize()
             .background(Heat.bg)
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp),
     ) {
@@ -346,7 +348,7 @@ private fun LiveContent(ui: PhoneRunUi, profile: AthleteProfile) {
     val miles = profile.unitsMiles
 
     Column(
-        Modifier.fillMaxSize().background(Heat.bg),
+        Modifier.fillMaxSize().background(Heat.bg).statusBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(16.dp))
@@ -530,6 +532,7 @@ private fun SaveContent(
         Modifier
             .fillMaxSize()
             .background(Heat.bg)
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp),
     ) {

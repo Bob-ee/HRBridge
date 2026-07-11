@@ -85,7 +85,7 @@ fun AppRoot(vm: SyncViewModel, onRequestPermissions: () -> Unit) {
                     onMeasureResting = { nav.navigate("resting") },
                     onBack = { nav.popBackStack() },
                     syncedAgoMs = null,
-                    bottomPadding = PaddingValues(0.dp),
+                    bottomPadding = padding,
                 )
             }
             composable("resting") { RestingHrScreen(onBack = { nav.popBackStack() }) }

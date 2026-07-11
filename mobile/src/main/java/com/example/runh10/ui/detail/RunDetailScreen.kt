@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -75,7 +76,7 @@ fun RunDetailScreen(sessionId: String, onBack: () -> Unit) {
         ) {
             RouteHeatmap(route, Modifier.fillMaxSize(), strokeWidthDp = 6f)
             Row(
-                Modifier.fillMaxWidth().padding(top = 18.dp, start = 20.dp, end = 20.dp),
+                Modifier.fillMaxWidth().statusBarsPadding().padding(top = 6.dp, start = 20.dp, end = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Box(
