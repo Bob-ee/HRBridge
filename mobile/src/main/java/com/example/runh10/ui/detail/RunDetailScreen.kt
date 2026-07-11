@@ -200,9 +200,9 @@ fun RunDetailScreen(sessionId: String, onBack: () -> Unit) {
                             KvRow("Avg HR", run.avgBpm?.toString() ?: "—", Heat.brandOrange)
                             Spacer(Modifier.height(5.dp))
                             KvRow("Calories", run.kcal?.roundToInt()?.toString() ?: "—", Heat.text)
-                            if (run.kcal == null && profile.weightKg == null) {
+                            if (run.kcal == null && (profile.weightKg == null || profile.birthYear == null || profile.sexMale == null)) {
                                 Text(
-                                    "set weight in settings to estimate calories",
+                                    "set weight, birth year & sex in settings to estimate calories",
                                     fontSize = 10.sp,
                                     color = Heat.textFaint,
                                     modifier = Modifier.padding(top = 3.dp),

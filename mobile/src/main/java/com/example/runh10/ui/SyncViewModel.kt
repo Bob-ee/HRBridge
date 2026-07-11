@@ -46,6 +46,7 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
     fun onResume() {
         viewModelScope.launch {
             recoveryJob.join()
+            calorieBackfillJob.join()
             // Cheap and self-gated (toggle + its own permission check inside), so this can
             // join the startup chain unconditionally — same idiom as the recovery/repush
             // calls that bracket it. Covers the case where the phone was asleep overnight
@@ -67,6 +68,7 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
         if (_state.value.hcAvailable && _state.value.permissionsGranted && beginSyncIfIdle()) {
             viewModelScope.launch {
                 recoveryJob.join()
+                calorieBackfillJob.join()
                 runCatching { repo.repushHealthConnect(getApplication<Application>()) }
                 runSyncBody()
             }
