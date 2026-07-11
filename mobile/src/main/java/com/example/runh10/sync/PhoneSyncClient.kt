@@ -81,12 +81,20 @@ class PhoneSyncClient(private val context: Context) {
             ChannelInbox.awaitInputClosed(SyncProtocol.pathSession(id))
             val bundle = dest.useLines { SessionParser.parse(meta, it) }
             val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
-            writer.write(bundle, rmssd)   // throws on failure → ACK skipped (all-or-nothing)
-            repo.ingest(
+            // The HR-based calorie estimate only exists after RunRepository.ingest runs
+            // (it's the single funnel where profile + bundle meet), which happens below —
+            // so this first write can't carry it yet. Keep write-then-ingest ordering as-is
+            // (throws on failure → ACK skipped, all-or-nothing) rather than reordering and
+            // risking a Room row for a sync attempt that ultimately fails; instead, once
+            // ingest gives us a real kcal, flag the row hcPending so the existing re-push
+            // path (idempotent upsert, runs on next resume) delivers the calorie record.
+            writer.write(bundle, rmssd)
+            val summary = repo.ingest(
                 bundle = bundle,
                 source = "watch",
                 precomputedHrvMs = rmssd.takeIf { it.isNotEmpty() }?.map { it.rmssdMs }?.average(),
             )
+            if (summary.kcal != null) repo.markHcPending(id, true)
         } catch (t: Throwable) {
             dest.delete()   // failed transfer/write → clean slate so the retry re-pulls
             throw t

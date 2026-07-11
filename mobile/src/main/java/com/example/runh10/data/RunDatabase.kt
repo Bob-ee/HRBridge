@@ -102,6 +102,12 @@ interface RunDao {
 
     @Query("UPDATE run_summary SET hcPending = :pending WHERE sessionId = :id")
     suspend fun markHcPending(id: String, pending: Boolean)
+
+    @Query("SELECT * FROM run_summary WHERE kcal IS NULL")
+    suspend fun missingKcal(): List<RunSummaryEntity>
+
+    @Query("UPDATE run_summary SET kcal = :kcal WHERE sessionId = :id")
+    suspend fun updateKcal(id: String, kcal: Double)
 }
 
 /** v1 -> v2: add hcPending (F5 — retry Health Connect writes that failed for phone-recorded runs). */

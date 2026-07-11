@@ -2,6 +2,7 @@ package com.example.runh10.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -29,6 +30,9 @@ data class AthleteProfile(
     val mileAnnouncements: Boolean = true,
     val autoPause: Boolean = false,
     val measureDurationSec: Int = 60,      // 30/60/90/120
+    val weightKg: Double? = null,
+    val birthYear: Int? = null,
+    val sexMale: Boolean? = null,
 )
 
 class AthleteStore(private val context: Context) {
@@ -44,6 +48,9 @@ class AthleteStore(private val context: Context) {
         val MILE_ANN = booleanPreferencesKey("mile_announcements")
         val AUTOPAUSE = booleanPreferencesKey("auto_pause")
         val MEASURE_DUR = intPreferencesKey("measure_duration_sec")
+        val WEIGHT_KG = doublePreferencesKey("weight_kg")
+        val BIRTH_YEAR = intPreferencesKey("birth_year")
+        val SEX_MALE = booleanPreferencesKey("sex_male")
     }
 
     val profile: Flow<AthleteProfile> = context.athleteDataStore.data.map { p ->
@@ -59,6 +66,9 @@ class AthleteStore(private val context: Context) {
             mileAnnouncements = p[K.MILE_ANN] ?: true,
             autoPause = p[K.AUTOPAUSE] ?: false,
             measureDurationSec = p[K.MEASURE_DUR] ?: 60,
+            weightKg = p[K.WEIGHT_KG],
+            birthYear = p[K.BIRTH_YEAR],
+            sexMale = p[K.SEX_MALE],
         )
     }
 
@@ -77,4 +87,7 @@ class AthleteStore(private val context: Context) {
     suspend fun setMileAnnouncements(v: Boolean) = context.athleteDataStore.edit { it[K.MILE_ANN] = v }
     suspend fun setAutoPause(v: Boolean) = context.athleteDataStore.edit { it[K.AUTOPAUSE] = v }
     suspend fun setMeasureDuration(v: Int) = context.athleteDataStore.edit { it[K.MEASURE_DUR] = v }
+    suspend fun setWeightKg(v: Double) = context.athleteDataStore.edit { it[K.WEIGHT_KG] = v }
+    suspend fun setBirthYear(v: Int) = context.athleteDataStore.edit { it[K.BIRTH_YEAR] = v }
+    suspend fun setSexMale(v: Boolean) = context.athleteDataStore.edit { it[K.SEX_MALE] = v }
 }

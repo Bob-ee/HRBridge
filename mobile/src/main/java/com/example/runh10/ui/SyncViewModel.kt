@@ -33,6 +33,14 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { repo.recoverOrphans(PhoneRecordController.activeSessionId) }
     }
 
+    // Same one-shot-per-process idiom as recoveryJob: fills in kcal for runs ingested
+    // before the athlete's body profile was set (or before this feature existed). Cheap
+    // and idempotent (rows with a real kcal are skipped), so running it once per process
+    // launch — rather than gating on some "have I ever run this" flag — is simplest.
+    private val calorieBackfillJob: Job = viewModelScope.launch {
+        runCatching { repo.backfillCalories() }
+    }
+
     /** Refresh HC + permission gates; auto-sync if ready and idle. */
     fun onResume() {
         viewModelScope.launch {

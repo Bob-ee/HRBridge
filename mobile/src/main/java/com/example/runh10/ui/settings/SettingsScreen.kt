@@ -159,6 +159,111 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(22.dp))
 
+        // ── Body ──
+        // Drives the HR-based calorie estimate (Keytel) — none of these are shown
+        // elsewhere, so incomplete profile just means "—" on the run detail's calorie row.
+        SectionLabel("BODY", color = Heat.textDim)
+        Spacer(Modifier.height(8.dp))
+        SettingsGroup {
+            var editingWeight by remember { mutableStateOf(false) }
+            SettingsRow(
+                icon = null,
+                title = "Weight",
+                subtitle = "For calorie estimates",
+                onClick = { editingWeight = !editingWeight },
+                trailing = {
+                    Text(
+                        profile.weightKg?.let { "${it.roundToOneDecimal()} kg" } ?: "not set",
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Heat.textMuted,
+                    )
+                },
+            )
+            if (editingWeight) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Stepper("−") {
+                        scope.launch { store.setWeightKg(((profile.weightKg ?: 70.0) - 0.5).coerceAtLeast(30.0)) }
+                    }
+                    Text(
+                        "${(profile.weightKg ?: 70.0).roundToOneDecimal()} kg",
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 22.sp,
+                        color = Heat.brandOrange,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Stepper("+") {
+                        scope.launch { store.setWeightKg(((profile.weightKg ?: 70.0) + 0.5).coerceAtMost(200.0)) }
+                    }
+                }
+            }
+            HairlineRow()
+            var editingBirthYear by remember { mutableStateOf(false) }
+            val thisYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+            SettingsRow(
+                icon = null,
+                title = "Birth year",
+                subtitle = "For calorie estimates",
+                onClick = { editingBirthYear = !editingBirthYear },
+                trailing = {
+                    Text(
+                        profile.birthYear?.toString() ?: "not set",
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Heat.textMuted,
+                    )
+                },
+            )
+            if (editingBirthYear) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Stepper("−") {
+                        scope.launch { store.setBirthYear(((profile.birthYear ?: (thisYear - 30)) - 1).coerceAtLeast(thisYear - 100)) }
+                    }
+                    Text(
+                        (profile.birthYear ?: (thisYear - 30)).toString(),
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 22.sp,
+                        color = Heat.brandOrange,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Stepper("+") {
+                        scope.launch { store.setBirthYear(((profile.birthYear ?: (thisYear - 30)) + 1).coerceAtMost(thisYear - 5)) }
+                    }
+                }
+            }
+            HairlineRow()
+            SettingsRow(
+                icon = null,
+                title = "Sex",
+                subtitle = "For calorie estimates",
+                trailing = {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Heat.surfaceDeep)
+                            .border(1.dp, Heat.border, RoundedCornerShape(10.dp))
+                            .padding(4.dp),
+                    ) {
+                        SexOption("MALE", profile.sexMale == true) { scope.launch { store.setSexMale(true) } }
+                        SexOption("FEMALE", profile.sexMale == false) { scope.launch { store.setSexMale(false) } }
+                    }
+                },
+            )
+        }
+        Spacer(Modifier.height(22.dp))
+
         // ── Sensors ──
         SectionLabel("SENSORS", color = Heat.textDim)
         Spacer(Modifier.height(8.dp))
@@ -215,6 +320,29 @@ fun SettingsScreen(
             )
         }
         Spacer(Modifier.height(30.dp))
+    }
+}
+
+private fun Double.roundToOneDecimal(): String = String.format(java.util.Locale.US, "%.1f", this)
+
+@Composable
+private fun SexOption(label: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .let { if (active) it.background(Heat.brandGradient) else it }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            fontFamily = Heat.sairaCondensed,
+            fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Bold,
+            fontSize = 12.sp,
+            letterSpacing = 0.4.sp,
+            color = if (active) Color.White else Heat.textMuted,
+        )
     }
 }
 

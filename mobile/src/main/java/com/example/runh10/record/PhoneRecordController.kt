@@ -415,13 +415,10 @@ object PhoneRecordController {
             splits = splits.toList(),
         )
         val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
-        // hcOk is false when HC is unavailable, unpermissioned, OR the write itself threw — any of
-        // those means the run isn't in Health Connect yet, so it's flagged for retry below (F5).
-        val hcOk = runCatching {
-            val hcWriter = HealthConnectWriter(appContext)
-            hcWriter.isAvailable() && hcWriter.hasAllPermissions() && run { hcWriter.write(bundle, rmssd); true }
-        }.getOrDefault(false)
-        repo.ingest(
+        // Ingest FIRST so the HR-based calorie estimate exists (RunRepository.ingest is the
+        // single funnel where profile + bundle meet) — then the same value can ride along
+        // in the Health Connect write below instead of waiting for a later re-push.
+        val summary = repo.ingest(
             bundle = bundle,
             source = "phone",
             name = name,
@@ -429,6 +426,13 @@ object PhoneRecordController {
             precomputedHrvMs = rmssd.takeIf { it.isNotEmpty() }?.map { it.rmssdMs }?.average(),
             movingMsOverride = finishedMovingMs.takeIf { it > 0 },
         )
+        // hcOk is false when HC is unavailable, unpermissioned, OR the write itself threw — any of
+        // those means the run isn't in Health Connect yet, so it's flagged for retry below (F5).
+        val hcOk = runCatching {
+            val hcWriter = HealthConnectWriter(appContext)
+            hcWriter.isAvailable() && hcWriter.hasAllPermissions() &&
+                run { hcWriter.write(bundle, rmssd, summary.kcal); true }
+        }.getOrDefault(false)
         if (!hcOk) repo.markHcPending(m.sessionId, true)
         feel?.let { repo.updateNameFeel(m.sessionId, name, it) }
         repo.metaFileFor(m.sessionId).delete()

@@ -27,6 +27,9 @@ object RunAnalyzer {
         precomputedHrvMs: Double? = null,
         kcal: Double? = null,
         movingMsOverride: Long? = null,
+        weightKg: Double? = null,
+        age: Int? = null,
+        male: Boolean? = null,
     ): RunSummaryEntity {
         val samples = bundle.samples
         val startMs = bundle.meta.startEpochMs
@@ -46,6 +49,15 @@ object RunAnalyzer {
 
         val hrvMs = precomputedHrvMs ?: RmssdCalculator.compute(rrs)
             .takeIf { it.isNotEmpty() }?.map { it.rmssdMs }?.average()
+
+        // Estimated calories only when the caller didn't already have a real value (kcal
+        // param, from CalRow samples on the wire) AND the athlete profile is complete
+        // enough to run the Keytel regression — otherwise stays null, never faked.
+        val estimatedKcal = kcal ?: if (weightKg != null && age != null && male != null) {
+            CalorieEstimator.kcal(hrs, weightKg, age, male)
+        } else {
+            null
+        }
 
         // Elevation gain: sum of positive altitude deltas ≥ 0.5 m (noise gate).
         var elevGain = 0.0
@@ -94,7 +106,7 @@ object RunAnalyzer {
             avgBpm = avgBpm,
             maxBpm = maxBpm,
             hrvMs = hrvMs,
-            kcal = kcal,
+            kcal = estimatedKcal,
             elevGainM = elevGain,
             zoneMillisJson = RunJson.encodeLongs(zoneMillis.toList()),
             splitsJson = RunJson.encodeSplits(splits),

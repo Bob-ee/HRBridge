@@ -34,7 +34,7 @@ class HealthConnectWriter(private val context: Context) {
     suspend fun hasAllPermissions(): Boolean =
         client().permissionController.getGrantedPermissions().containsAll(PERMISSIONS)
 
-    suspend fun write(bundle: SessionBundle, rmssd: List<RmssdCalculator.RmssdPoint>) {
+    suspend fun write(bundle: SessionBundle, rmssd: List<RmssdCalculator.RmssdPoint>, totalKcal: Double? = null) {
         val meta = bundle.meta
         val zone = runCatching { ZoneId.of(meta.startZoneId) }.getOrDefault(ZoneId.systemDefault())
         val samples = bundle.samples
@@ -114,13 +114,21 @@ class HealthConnectWriter(private val context: Context) {
             )
         }
 
-        // Active calories total = max cumulative kcal
-        val totalKcal = cals.maxOfOrNull { it.kcal }
-        if (totalKcal != null && totalKcal > 0) {
+        // Active calories total = max cumulative kcal from the watch's own CalRow stream
+        // when present; else fall back to the Keytel HR-based estimate passed in by the
+        // caller (analyze-time, from the athlete's body profile — never faked here).
+        val calRowKcal = cals.maxOfOrNull { it.kcal }
+        if (calRowKcal != null && calRowKcal > 0) {
             records += ActiveCaloriesBurnedRecord(
                 startTime = start, startZoneOffset = startOffset,
                 endTime = end, endZoneOffset = endOffset,
-                energy = Energy.kilocalories(totalKcal), metadata = md(),
+                energy = Energy.kilocalories(calRowKcal), metadata = md(),
+            )
+        } else if (totalKcal != null && totalKcal > 0) {
+            records += ActiveCaloriesBurnedRecord(
+                startTime = start, startZoneOffset = startOffset,
+                endTime = end, endZoneOffset = endOffset,
+                energy = Energy.kilocalories(totalKcal), metadata = md("${meta.sessionId}_kcal"),
             )
         }
 

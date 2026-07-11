@@ -5,6 +5,7 @@ import com.example.runh10.healthconnect.HealthConnectWriter
 import com.example.runh10.healthconnect.RmssdCalculator
 import com.example.runh10.parse.SessionParser
 import com.example.runh10.shared.Constants
+import com.example.runh10.shared.model.HrRow
 import com.example.runh10.shared.model.RrRow
 import com.example.runh10.shared.model.SessionBundle
 import com.example.runh10.shared.model.SessionMeta
@@ -70,6 +71,7 @@ class RunRepository(private val context: Context) {
         // A re-sync of an already-ingested session must not clobber a user-edited
         // name or feel — keep them if the row exists.
         val existing = dao.byId(bundle.meta.sessionId)
+        val p = athlete.current()
         val summary = RunAnalyzer.analyze(
             bundle = bundle,
             zoneCalc = zoneCalculator(),
@@ -79,9 +81,48 @@ class RunRepository(private val context: Context) {
             precomputedHrvMs = precomputedHrvMs,
             kcal = kcal,
             movingMsOverride = movingMsOverride,
+            weightKg = p.weightKg,
+            age = p.birthYear?.let { currentYear() - it },
+            male = p.sexMale,
         ).copy(feel = existing?.feel, hcPending = existing?.hcPending ?: false)
         dao.upsert(summary)
         summary
+    }
+
+    private fun currentYear(): Int = Calendar.getInstance().get(Calendar.YEAR)
+
+    /**
+     * One-shot fill-in for rows ingested before the athlete's body profile (weight,
+     * birth year, sex) was set, or before this feature existed — kcal for them is
+     * null forever otherwise. Age is derived at estimation time (current year minus
+     * birth year), never stored, so it can't go stale. Returns the count updated.
+     */
+    suspend fun backfillCalories(): Int = withContext(Dispatchers.IO) {
+        val p = athlete.current()
+        val weightKg = p.weightKg
+        val birthYear = p.birthYear
+        val male = p.sexMale
+        if (weightKg == null || birthYear == null || male == null) return@withContext 0
+        val age = currentYear() - birthYear
+        var updated = 0
+        for (row in dao.missingKcal()) {
+            runCatching {
+                val meta = SessionMeta(
+                    sessionId = row.sessionId,
+                    startEpochMs = row.startMs,
+                    startZoneId = ZoneId.systemDefault().id,
+                    endEpochMs = row.endMs,
+                    appVersion = Constants.APP_VERSION,
+                    state = SessionState.FINALIZED,
+                )
+                val bundle = parseStored(meta) ?: return@runCatching
+                val hrs = bundle.samples.filterIsInstance<HrRow>()
+                val kcal = CalorieEstimator.kcal(hrs, weightKg, age, male) ?: return@runCatching
+                dao.updateKcal(row.sessionId, kcal)
+                updated++
+            }
+        }
+        updated
     }
 
     /** Re-parse a stored session file (detail screens needing full-resolution data). */
@@ -159,7 +200,10 @@ class RunRepository(private val context: Context) {
                 )
                 val bundle = parseStored(meta) ?: return@runCatching
                 val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
-                writer.write(bundle, rmssd)
+                // row.kcal was computed at ingest time from the profile that existed then
+                // (or by backfillCalories() since) — reuse it rather than re-estimating,
+                // so this retry can't disagree with what's already shown in the app.
+                writer.write(bundle, rmssd, row.kcal)
                 dao.markHcPending(row.sessionId, false)
                 pushed++
             }
