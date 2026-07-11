@@ -181,3 +181,44 @@ Phone (`192.168.0.115:45027` or USB if wireless ADB still flaky):
 5. **Battery % live check** — pair the H10 strap on the watch, confirm the Ready line shows `· <n>%` and the phone sensor card shows the same battery segment; disconnect and confirm it reverts to no-segment (not a stale/frozen number).
 6. **Calorie sanity** — after a real run with weight/birth-year/sex all set, confirm the run-detail kcal value is in a plausible range for duration/HR (rough gut check, not exact) and that it persisted (survives app restart, appears in Health Connect as `ActiveCaloriesBurnedRecord`).
 7. **Resting-HR auto-update live** — after a night with the watch/Fitbit syncing resting HR to Health Connect, confirm the phone's next app-resume or the 24h WorkManager tick picks it up (subtitle updates to "Updated <relative time>..."), and that it does NOT overwrite a same-day manual entry (manual wins for the day, per `RestingHrPick` — auto only applies if strictly newer).
+
+---
+
+## 2026-07-11 phone audit (post-Plans 1-4)
+
+Device: Pixel 9 Pro, HR Bridge v2.0 @ commit `1a8034e`, package `com.example.runh10`. Wireless-debugging endpoint rotated mid-session (Android drops the listener on network change); resumed on the new port and finished the full capture. Screenshots: `/private/tmp/claude-501/-Users-bobbywhiteley-Documents-Claude-Projects-WatchApp/47bed566-0ba0-4220-819b-bb0628f9c2a3/scratchpad/phone-audit/`.
+
+All 8 target screens captured: `01-feed.png`, `02-run-detail.png`, `04-trends.png`, `05-watch.png`, `06-profile.png`, `07-settings-top.png` / `08-settings-mid.png` / `08b-settings-mid-recheck.png` / `09-settings-bottom.png` (full scroll), `10-resting-hr-measure.png`, `13-record-ready.png`.
+
+### Insets gate (8 screens)
+
+| Screen | Verdict | Screenshot |
+|---|---|---|
+| Feed | PASS | `01-feed.png` |
+| Run Detail | PASS | `02-run-detail.png` (map hero bleeds edge-to-edge behind the status bar by design — matches the mock's edge-to-edge treatment; back button and SHARE pill both sit well clear of the clock, no text/icon collision) |
+| Trends | PASS | `04-trends.png` |
+| Watch tab | PASS | `05-watch.png` |
+| Profile | PASS | `06-profile.png` |
+| Settings | **FAIL** | `07-settings-top.png` (unscrolled: clean), `08-settings-mid.png` + `08b-settings-mid-recheck.png` + `09-settings-bottom.png` (scrolled: broken) |
+| Resting-HR measure | PASS | `10-resting-hr-measure.png` |
+| Record Ready | PASS | `13-record-ready.png` |
+
+**Settings detail:** the screen is clean on first render (`07-settings-top.png` — "Settings" title sits with proper clearance below the clock). But scroll the list at all, and the top "UNITS" row (the orange MILES/KILOMETERS segmented pill) rides up and sits directly behind the status bar — the "MILES" pill's orange background is rendered right under/through the "7:1x" clock digits, and "KILOMETERS" text is overlapped by the wifi/signal/battery icons. Re-captured twice at the same scroll position (`08-settings-mid.png` and `08b-settings-mid-recheck.png`, one minute apart with no further input) — identical, so this is a persistent state, not a mid-animation artifact. Also confirmed at max-scroll (`09-settings-bottom.png`, Auto-pause is the last row — same collision persists at the top). The list has no top-inset spacer/clip preventing content from scrolling into the status-bar safe area. This is the "never-visually-verified fix" screen and the fix does not hold once you scroll — Run Detail, Resting-HR, and Record Ready all verified clean.
+
+### Plan 4 UI
+
+- **Body rows present and styled consistently**: Settings → BODY section has Weight, Birth year, Sex (`07-settings-top.png`, `08-settings-mid.png`). Same card/list-row idiom as the rest of Settings (label + `For calorie estimates` subtitle, right-aligned value/`not set`, hairline dividers between rows); Sex uses a segmented MALE/FEMALE toggle matching the same pattern as the UNITS segmented control at the top of the screen. No visual inconsistency.
+- **Run Detail empty-profile hint**: with the profile empty, the Calories row shows "—" and the exact hint text underneath reads: **"set weight, birth year & sex in settings to estimate calories"** (`02-run-detail.png`).
+- **Resting-HR auto-update toggle subtitle**: reads **"From watch sleep & HRV data"**, toggle is ON (`07-settings-top.png`, `08-settings-mid.png`). Note: this is the static/always-on-copy variant, not one of the two dynamic Health-Connect-driven subtitle strings ("Updated <relative time>..." / "No resting-HR data in Health Connect...") called out in the prior morning-checklist note — worth reconciling with Task 3's spec if those dynamic strings were meant to replace this line rather than sit alongside the auto-update toggle.
+
+### General audit vs mocks — findings
+
+**P1 — Settings screen: scrolled content collides with the status bar.** Described above. The orange UNITS pill and its MILES/KILOMETERS labels visually merge with the system clock and status icons once the list is scrolled past its initial position, in both the mid-scroll and fully-scrolled states. This directly fails the insets requirement this audit was commissioned to verify. Fix needs a top inset/clip on the scrollable content, not just on the fixed "Settings" header row.
+
+**P2 — Watch tab sync log renders 10 duplicate placeholder rows.** `05-watch.png`: the "SYNC LOG" card shows ten consecutive rows that all read "No unsynced runs" — every other empty state in the app (e.g. Trends' "Not enough runs with HRV yet") is a single line, not a repeated list. Looks like a fixed-size placeholder list (e.g. `List(10) { EmptyRow() }`) rendering instead of a single empty-state message or the actual (currently-empty) log entries.
+
+**P3 — Settings has no Sign-out / account row.** The mock (`HRBridge Phone.dc.html`) shows a "Sign out" affordance at the bottom of Settings; the live Settings screen ends at Auto-pause with nothing below. Likely intentional (no auth system implemented yet) rather than a defect — flagging for awareness only, not a bug.
+
+No other broken/clipped/misaligned layout was observed. Feed, Run Detail, Trends, Profile, and Record Ready all structurally match their mock counterparts (stat rows, zone bar, map hero, HR profile cards, sensor/GPS cards) modulo the sparse real data (one 0.05 mi run) which is a data-state artifact, not a UI bug.
+
+**Total findings: 3 (P1: 1, P2: 1, P3: 1).**
