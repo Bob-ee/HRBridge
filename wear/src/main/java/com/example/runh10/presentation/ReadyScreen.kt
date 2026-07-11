@@ -34,50 +34,56 @@ import com.example.runh10.workout.ScanDevice
 import com.example.runh10.workout.UiState
 
 /**
- * Pre-run screen (HEAT): logo, big gradient START, strap + GPS status.
- * Falls back to the scan/pick list when no strap is remembered.
+ * Home / pre-run screen (HEAT): logo, big gradient START, strap + GPS status, visible
+ * SETTINGS affordance. This is ALWAYS the landing screen — regardless of whether a strap
+ * is remembered — so cold/warm launch never traps the user on Pairing (see V7). When no
+ * strap is configured, the status line reads "TAP TO PAIR STRAP" and opens Pairing (V2).
+ *
+ * Sizing note (V1 root cause): this is a 456x456px / 320dpi round display, i.e. only
+ * ~228dp of actual diameter — NOT ~456dp. The previous layout's children summed to
+ * ~300dp and were positioned with `Arrangement.SpaceBetween` across the full
+ * `fillMaxSize()`, which on a 228dp viewport made the bottom status column overlap and
+ * render underneath the START circle (the "invisible" SETTINGS hotspot). This version's
+ * interactive stack (circle + status + SETTINGS) is sized to fit comfortably inside the
+ * ~78%-diameter round-safe band (~178dp) with margin to spare, centered rather than
+ * pinned to the container edges.
  */
 @Composable
 fun ReadyScreen(
     ui: UiState,
-    devices: List<ScanDevice>,
     remembered: ScanDevice?,
-    onScan: () -> Unit,
-    onPick: (String) -> Unit,
     onStart: () -> Unit,
     onSettings: () -> Unit,
+    onPairStrap: () -> Unit,
 ) {
-    if (remembered == null) {
-        PairScreen(devices, onScan, onPick, onSettings)
-        return
-    }
-
     val connected = ui.hrState == "CONNECTED"
+    val hasStrap = remembered != null
 
     Column(
-        modifier = Modifier.fillMaxSize().background(Heat.bg),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Heat.bg),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 38.dp),
-        ) {
-            PulseLogo(18.dp)
-            Spacer(Modifier.width(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PulseLogo(14.dp)
+            Spacer(Modifier.width(6.dp))
             Text(
                 text = "HR BRIDGE",
                 fontFamily = Heat.sairaCondensed,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 17.sp,
+                fontSize = 14.sp,
                 letterSpacing = 1.sp,
                 color = Heat.text,
             )
         }
 
+        Spacer(Modifier.height(10.dp))
+
         Box(
             modifier = Modifier
-                .size(142.dp)
+                .size(96.dp)
                 .alpha(if (connected) 1f else 0.45f)
                 .background(Heat.brandGradient, CircleShape)
                 .clickable(enabled = connected, onClick = onStart),
@@ -88,66 +94,100 @@ fun ReadyScreen(
                     text = "START",
                     fontFamily = Heat.sairaCondensed,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 32.sp,
-                    letterSpacing = 1.8.sp,
+                    fontSize = 21.sp,
+                    letterSpacing = 1.2.sp,
                     color = Heat.text,
                 )
                 Text(
                     text = "RUN",
                     fontFamily = Heat.sairaCondensed,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    letterSpacing = 4.sp,
-                    color = Heat.text.copy(alpha = 0.8f),
+                    fontSize = 10.sp,
+                    letterSpacing = 2.8.sp,
+                    color = Heat.text.copy(alpha = if (connected) 0.8f else 0.5f),
                 )
             }
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(bottom = 34.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(7.dp).background(
-                        if (connected) Heat.goodGreen else Color(0xFFFFCF6A),
-                        CircleShape,
-                    ),
-                )
-                Spacer(Modifier.width(7.dp))
+        Spacer(Modifier.height(9.dp))
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (hasStrap) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(6.dp).background(
+                            if (connected) Heat.goodGreen else Color(0xFFFFCF6A),
+                            CircleShape,
+                        ),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "POLAR H10 · " + if (connected) "CONNECTED" else "CONNECTING…",
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.4.sp,
+                        color = Heat.text,
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
                 Text(
-                    text = if (connected) remembered.name.uppercase() else "CONNECTING…",
+                    text = if (ui.gpsLocked) "GPS locked" else "GPS searching",
+                    fontSize = 10.sp,
+                    color = Heat.textMuted,
+                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable(onClick = onPairStrap)
+                        .padding(4.dp),
+                ) {
+                    Box(
+                        Modifier.size(6.dp).background(Color(0xFFFFCF6A), CircleShape),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "TAP TO PAIR STRAP",
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.4.sp,
+                        color = Heat.brandOrange,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .background(Heat.surface, RoundedCornerShape(11.dp))
+                    .border(1.dp, Heat.border, RoundedCornerShape(11.dp))
+                    .clickable(onClick = onSettings)
+                    .padding(horizontal = 14.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = "SETTINGS",
                     fontFamily = Heat.sairaCondensed,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    letterSpacing = 0.7.sp,
-                    color = Heat.text,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.4.sp,
+                    color = Heat.textMuted,
                 )
             }
-            Spacer(Modifier.height(5.dp))
-            Text(
-                text = "GPS starts with the run",
-                fontSize = 11.sp,
-                color = Heat.textMuted,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "SETTINGS",
-                fontFamily = Heat.sairaCondensed,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                letterSpacing = 1.6.sp,
-                color = Heat.textDim,
-                modifier = Modifier
-                    .clickable(onClick = onSettings)
-                    .padding(6.dp),
-            )
         }
     }
 }
 
+/**
+ * Explicit Pairing screen. Reached from Home's "TAP TO PAIR STRAP" status line (when no
+ * strap is configured) and from Settings' strap row — never rendered as a start
+ * destination (see V7/MainActivity + WorkoutFlow for the navigation state that enforces
+ * this).
+ */
 @Composable
-private fun PairScreen(
+fun PairingScreen(
     devices: List<ScanDevice>,
     onScan: () -> Unit,
     onPick: (String) -> Unit,

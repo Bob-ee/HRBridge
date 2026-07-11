@@ -1,5 +1,6 @@
 package com.example.runh10.presentation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,9 +11,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +32,16 @@ import com.example.runh10.workout.ScanDevice
 import com.example.runh10.workout.UiState
 import java.util.Locale
 import kotlin.math.roundToInt
+
+/**
+ * Hand-rolled screen states for the pre/post-run flow (this app predates
+ * androidx.navigation — there's no NavController/back stack primitive here).
+ * HOME is always the entry point (see MainActivity/WorkoutFlow — never PAIRING); Pairing
+ * and Settings are both reachable from Home, and Settings also from Pairing's strap flow,
+ * so [WorkoutFlow] tracks where Settings was opened from and returns there on back (both
+ * the in-app BACK control and the system back gesture, via [BackHandler]).
+ */
+private enum class Screen { HOME, PAIRING, SETTINGS }
 
 @Composable
 fun PermissionScreen(onRequest: () -> Unit) {
@@ -91,9 +104,30 @@ fun WorkoutFlow(
     onToggleAnnounceZone: (Boolean) -> Unit,
     onToggleAutoPause: (Boolean) -> Unit,
 ) {
-    var showSettings by remember { mutableStateOf(false) }
+    // HOME is always the initial/resting screen — cold or warm launch never starts on
+    // Pairing (V7), regardless of whether a strap is currently remembered.
+    var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    // Where Settings was opened from, so BACK (in-app control AND system back gesture)
+    // returns there instead of always bouncing to Home — this is the "real back stack"
+    // for the one screen (Settings) that can be entered from more than one place.
+    var settingsOrigin by rememberSaveable { mutableStateOf(Screen.HOME) }
     var showSummary by remember { mutableStateOf(false) }
     var summaryUi by remember { mutableStateOf<UiState?>(null) }
+
+    fun openSettings() {
+        settingsOrigin = screen
+        screen = Screen.SETTINGS
+    }
+
+    // Once a strap is actually remembered (WorkoutController persists it on reaching
+    // CONNECTED — see MainActivity), leave Pairing automatically and land back on Home
+    // with the newly-connected status, mirroring the pre-restructure behavior where the
+    // Ready/Pair split was driven reactively off `remembered`.
+    LaunchedEffect(remembered) {
+        if (remembered != null && screen == Screen.PAIRING) {
+            screen = Screen.HOME
+        }
+    }
 
     when {
         showSummary && summaryUi != null -> SummaryScreen(
@@ -113,32 +147,44 @@ fun WorkoutFlow(
                 onEnd()
             },
         )
-        showSettings -> SettingsScreen(
-            settings = settings,
-            strapName = remembered?.name,
-            strapConnected = ui.hrState == "CONNECTED",
-            onForgetStrap = {
-                showSettings = false
-                onForget()
-            },
-            onAge = onAge,
-            onMaxHr = onMaxHr,
-            onMeasureResting = onMeasureResting,
-            onToggleAnnounce = onToggleAnnounce,
-            onToggleAnnounceSplit = onToggleAnnounceSplit,
-            onToggleAnnouncePace = onToggleAnnouncePace,
-            onToggleAnnounceZone = onToggleAnnounceZone,
-            onToggleAutoPause = onToggleAutoPause,
-            onBack = { showSettings = false },
-        )
+        screen == Screen.SETTINGS -> {
+            BackHandler(onBack = { screen = settingsOrigin })
+            SettingsScreen(
+                settings = settings,
+                strapName = remembered?.name,
+                strapConnected = ui.hrState == "CONNECTED",
+                onForgetStrap = {
+                    onForget()
+                    screen = Screen.PAIRING
+                },
+                onAge = onAge,
+                onMaxHr = onMaxHr,
+                onMeasureResting = onMeasureResting,
+                onToggleAnnounce = onToggleAnnounce,
+                onToggleAnnounceSplit = onToggleAnnounceSplit,
+                onToggleAnnouncePace = onToggleAnnouncePace,
+                onToggleAnnounceZone = onToggleAnnounceZone,
+                onToggleAutoPause = onToggleAutoPause,
+                onBack = { screen = settingsOrigin },
+            )
+        }
+        screen == Screen.PAIRING -> {
+            // System back from Pairing always returns to Home — Pairing is never a
+            // start destination and never loops into Settings and back (V7).
+            BackHandler(onBack = { screen = Screen.HOME })
+            PairingScreen(
+                devices = devices,
+                onScan = onScan,
+                onPick = onPick,
+                onSettings = { openSettings() },
+            )
+        }
         else -> ReadyScreen(
             ui = ui,
-            devices = devices,
             remembered = remembered,
-            onScan = onScan,
-            onPick = onPick,
             onStart = onStart,
-            onSettings = { showSettings = true },
+            onSettings = { openSettings() },
+            onPairStrap = { screen = Screen.PAIRING },
         )
     }
 }
