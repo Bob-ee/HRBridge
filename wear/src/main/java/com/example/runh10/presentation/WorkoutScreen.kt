@@ -82,6 +82,11 @@ fun WorkoutFlow(
     ui: UiState,
     devices: List<ScanDevice>,
     remembered: ScanDevice?,
+    // V4: the actually-persisted strap identity (DataStore-backed), distinct from
+    // [remembered] above which tracks the transient connect-in-progress device and
+    // goes null on forget/relaunch races — Settings must show the persisted name so
+    // its row can't disagree with itself across a pairing round-trip.
+    pairedStrap: ScanDevice?,
     settings: RunSettings,
     media: WatchMediaClient,
     ambientState: AmbientState = AmbientState(),
@@ -96,7 +101,7 @@ fun WorkoutFlow(
     onLap: () -> Unit,
     onAge: (Int) -> Unit,
     onMaxHr: (Int) -> Unit,
-    onMeasureResting: suspend () -> Int,
+    onMeasureResting: suspend (onTick: (elapsedSec: Int) -> Unit) -> Int,
     onToggleAnnounce: (Boolean) -> Unit,
     onToggleAnnounceSplit: (Boolean) -> Unit,
     onToggleAnnouncePace: (Boolean) -> Unit,
@@ -154,7 +159,10 @@ fun WorkoutFlow(
             BackHandler(onBack = { screen = settingsOrigin })
             SettingsScreen(
                 settings = settings,
-                strapName = remembered?.name,
+                // Prefer the persisted identity (survives forget→re-view races); fall
+                // back to the live/pending device only when nothing has been persisted
+                // yet at all (e.g. the very first connect before DataStore catches up).
+                strapName = pairedStrap?.name ?: remembered?.name,
                 strapConnected = ui.hrState == "CONNECTED",
                 onForgetStrap = {
                     onForget()

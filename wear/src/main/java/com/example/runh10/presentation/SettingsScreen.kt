@@ -43,7 +43,7 @@ fun SettingsScreen(
     onForgetStrap: () -> Unit,
     onAge: (Int) -> Unit,
     onMaxHr: (Int) -> Unit,
-    onMeasureResting: suspend () -> Int,
+    onMeasureResting: suspend (onTick: (elapsedSec: Int) -> Unit) -> Int,
     onToggleAnnounce: (Boolean) -> Unit,
     onToggleAnnounceSplit: (Boolean) -> Unit,
     onToggleAnnouncePace: (Boolean) -> Unit,
@@ -54,6 +54,9 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var measuring by remember { mutableStateOf(false) }
     var noStrapData by remember { mutableStateOf(false) }
+    // V6: elapsed seconds of the current measurement, ticked live by the per-second
+    // loop in WorkoutController.measureRestingHr — drives the countdown label.
+    var elapsedSec by remember { mutableStateOf(0) }
 
     ScalingLazyColumn(
         modifier = Modifier.fillMaxWidth().background(Heat.bg).padding(horizontal = 14.dp),
@@ -130,7 +133,9 @@ fun SettingsScreen(
         }
         item {
             val label = when {
-                measuring -> "Measuring… (60s)"
+                // Live countdown (V6) — ticks each second off the elapsed counter driven
+                // by the measurement's own per-second loop, instead of a frozen "(60s)".
+                measuring -> "Measuring… ${(60 - elapsedSec).coerceIn(0, 60)}s"
                 noStrapData -> "No strap data — wear the H10"
                 settings.restingHr != null -> "Resting HR · ${settings.restingHr} bpm"
                 else -> "Measure resting HR"
@@ -144,10 +149,14 @@ fun SettingsScreen(
                         RoundedCornerShape(14.dp),
                     )
                     .border(1.dp, Color(0xFF1E2A36), RoundedCornerShape(14.dp))
+                    // Also the RETRY affordance for the terminal no-data state (V6):
+                    // tapping here is enabled any time we're not already mid-measurement,
+                    // so it restarts the measurement in place.
                     .clickable(enabled = !measuring) {
                         measuring = true
+                        elapsedSec = 0
                         scope.launch {
-                            val result = onMeasureResting()
+                            val result = onMeasureResting { sec -> elapsedSec = sec }
                             noStrapData = result <= 0
                             measuring = false
                         }
@@ -155,13 +164,19 @@ fun SettingsScreen(
                     .padding(vertical = 11.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = label,
-                    fontFamily = Heat.sairaCondensed,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Heat.infoBlue,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = label,
+                        fontFamily = Heat.sairaCondensed,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Heat.infoBlue,
+                    )
+                    // Same subtitle idiom as the strap row's "tap to change strap".
+                    if (noStrapData) {
+                        Text(text = "tap to retry", fontSize = 10.sp, color = Heat.textDim)
+                    }
+                }
             }
         }
 

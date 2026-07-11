@@ -182,6 +182,7 @@ class MainActivity : ComponentActivity() {
                             ui = ui,
                             devices = devices,
                             remembered = pendingDevice,
+                            pairedStrap = remembered,
                             settings = settings,
                             media = mediaClient,
                             ambientState = ambientState,
@@ -201,8 +202,8 @@ class MainActivity : ComponentActivity() {
                             onLap = { WorkoutController.manualLap() },
                             onAge = { v -> scope.launch { settingsStore.setAge(v) } },
                             onMaxHr = { v -> scope.launch { settingsStore.setMaxHr(v) } },
-                            onMeasureResting = {
-                                val bpm = WorkoutController.measureRestingHr()
+                            onMeasureResting = { onTick ->
+                                val bpm = WorkoutController.measureRestingHr(onTick)
                                 if (bpm > 0) settingsStore.setRestingHr(bpm)
                                 bpm
                             },

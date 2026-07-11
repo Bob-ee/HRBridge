@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -37,6 +39,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * service keeps the process alive; this object keeps the data and the merged state.
  */
 object WorkoutController {
+
+    /** Generic placeholder name used only when no real advertised/persisted name is known. */
+    private const val GENERIC_STRAP_NAME = "Polar H10"
 
     private var initialized = false
     private lateinit var ble: HeartRateBleClient
@@ -145,7 +150,14 @@ object WorkoutController {
             ble.state.collect { st ->
                 if (st == HeartRateBleClient.State.CONNECTED) {
                     ble.connectedAddressAndName()?.let { (mac, name) ->
-                        devicePrefs.saveLastDevice(mac, name)
+                        // V4: a pairing round-trip must never clobber a known-good,
+                        // specific device name (e.g. "Polar H10 182CCF39") with the bare
+                        // generic fallback — if we already have a more specific name on
+                        // file for this exact MAC, keep it instead of overwriting.
+                        val existing = _rememberedDevice.value
+                        val wouldTruncate = name == GENERIC_STRAP_NAME &&
+                            existing != null && existing.address == mac && existing.name != GENERIC_STRAP_NAME
+                        if (!wouldTruncate) devicePrefs.saveLastDevice(mac, name)
                     }
                 }
             }
@@ -279,12 +291,32 @@ object WorkoutController {
         }.stateIn(scope, SharingStarted.Eagerly, UiState())
     }
 
-    suspend fun measureRestingHr(): Int {
+    /**
+     * V6: [onTick] fires once a second with the elapsed seconds (1..60) for the
+     * duration of the measurement, independent of whether any HR samples actually
+     * arrive — so the caller can drive a live "Measuring… Ns" label even in the
+     * eventual no-strap-data case, where the sample collector below never emits at all.
+     */
+    suspend fun measureRestingHr(onTick: (elapsedSec: Int) -> Unit = {}): Int {
         val readings = mutableListOf<Int>()
-        withTimeoutOrNull(60_000L) {
-            ble.hr.filterNotNull().collect { sample ->
-                readings += sample.bpm
-                if (readings.size >= 40) cancel()
+        coroutineScope {
+            val tickJob = launch {
+                var elapsed = 0
+                while (isActive) {
+                    delay(1000)
+                    elapsed++
+                    onTick(elapsed)
+                }
+            }
+            try {
+                withTimeoutOrNull(60_000L) {
+                    ble.hr.filterNotNull().collect { sample ->
+                        readings += sample.bpm
+                        if (readings.size >= 40) cancel()
+                    }
+                }
+            } finally {
+                tickJob.cancel()
             }
         }
         if (readings.isEmpty()) return 0
@@ -309,7 +341,7 @@ object WorkoutController {
         ble.setTargetName(deviceName)
         // Track this device immediately so the Prep screen renders before DataStore saves.
         _pendingDevice.value = ScanDevice(
-            name = deviceName ?: "Polar H10",
+            name = deviceName ?: GENERIC_STRAP_NAME,
             address = deviceAddress,
             rssi = ble.devices.value.find { it.address == deviceAddress }?.rssi ?: 0,
         )
