@@ -70,6 +70,11 @@ class HeartRateBleClient(private val context: Context) {
     ).apply { tryEmit(null) }
     val hr: SharedFlow<HrSample?> = _hr.asSharedFlow()
 
+    // Null until a Battery Level read completes; also null when the service is absent
+    // or the strap disconnects. Never synthesized — see class doc on NEVER faking values.
+    private val _battery = MutableStateFlow<Int?>(null)
+    val battery: StateFlow<Int?> = _battery.asStateFlow()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var gatt: BluetoothGatt? = null
     private var targetAddress: String? = null
@@ -143,6 +148,7 @@ class HeartRateBleClient(private val context: Context) {
         gatt?.close()
         gatt = null
         _state.value = State.IDLE
+        _battery.value = null
     }
 
     private fun openGatt(autoConnect: Boolean) {
@@ -185,12 +191,14 @@ class HeartRateBleClient(private val context: Context) {
                         g.close()
                         gatt = null
                         _state.value = State.DISCONNECTED
+                        _battery.value = null
                         scheduleReconnect()
                     }
                 }
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     _state.value = State.DISCONNECTED
+                    _battery.value = null
                     g.close()
                     gatt = null
                     scheduleReconnect()
@@ -217,6 +225,37 @@ class HeartRateBleClient(private val context: Context) {
             value: ByteArray,
         ) {
             if (characteristic.uuid == HR_MEASUREMENT) parseHeartRate(value)
+        }
+
+        // GATT operations are serial on a single connection — the battery read must not
+        // be issued until the HR CCCD write (kicked off in onServicesDiscovered) has
+        // actually completed, or the stack will reject/drop it. Absent Battery Service
+        // is not an error: _battery simply stays null (never faked).
+        override fun onDescriptorWrite(
+            g: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int,
+        ) {
+            if (descriptor.uuid != CCCD || descriptor.characteristic?.uuid != HR_MEASUREMENT) return
+            val batteryLevel = g.getService(BATTERY_SERVICE)?.getCharacteristic(BATTERY_LEVEL)
+            if (batteryLevel == null) {
+                Log.d(TAG, "battery service not present")
+                return
+            }
+            g.readCharacteristic(batteryLevel)
+        }
+
+        // API 33+ overload (minSdk 34): value delivered explicitly, matching the modern
+        // writeDescriptor overload used above.
+        override fun onCharacteristicRead(
+            g: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            if (characteristic.uuid != BATTERY_LEVEL) return
+            if (status != BluetoothGatt.GATT_SUCCESS) return
+            _battery.value = BatteryLevelParser.parse(value)
         }
     }
 
@@ -257,5 +296,16 @@ class HeartRateBleClient(private val context: Context) {
         val HR_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         val HR_MEASUREMENT: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
         val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        val BATTERY_SERVICE: UUID = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
+        val BATTERY_LEVEL: UUID = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
+    }
+}
+
+/** Parses a standard BLE Battery Level (0x2A19) characteristic value: uint8, 0..100. */
+object BatteryLevelParser {
+    fun parse(value: ByteArray): Int? {
+        if (value.isEmpty()) return null
+        val level = value[0].toInt() and 0xFF
+        return level.takeIf { it in 0..100 }
     }
 }

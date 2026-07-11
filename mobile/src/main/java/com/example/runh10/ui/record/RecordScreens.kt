@@ -203,12 +203,13 @@ private fun ReadyContent(ui: PhoneRunUi, profile: AthleteProfile, onClose: () ->
                                 ),
                             )
                             Spacer(Modifier.width(7.dp))
+                            val batterySuffix = ui.batteryPct?.takeIf { connected }?.let { " · $it%" } ?: ""
                             Text(
                                 when {
                                     connected -> "Connected"
                                     remembered != null -> "Connecting…"
                                     else -> "Not paired"
-                                },
+                                } + batterySuffix,
                                 fontSize = 12.sp,
                                 color = if (connected) Heat.goodGreen else Heat.textDim,
                             )

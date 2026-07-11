@@ -120,9 +120,10 @@ fun ReadyScreen(
                         ),
                     )
                     Spacer(Modifier.width(6.dp))
+                    val batterySuffix = ui.batteryPct?.let { " · $it%" } ?: ""
                     Text(
                         text = remembered.name.uppercase() + " · " +
-                            if (connected) "CONNECTED" else "CONNECTING…",
+                            (if (connected) "CONNECTED" else "CONNECTING…") + batterySuffix,
                         fontFamily = Heat.sairaCondensed,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,

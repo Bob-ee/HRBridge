@@ -181,10 +181,13 @@ object WorkoutController {
             ble.hr.filterNotNull().collect { lastHrAtMs = System.currentTimeMillis() }
         }
 
+        // combine() only has typed overloads up to 5 flows; nest hr+battery into a pair
+        // first so the outer combine stays within that limit.
+        val hrAndBattery = combine(ble.hr, ble.battery) { hr, battery -> hr to battery }
         val merged = combine(
-            ble.hr, ble.state, exercise.metrics, running, startTime,
-        ) { hr, bleState, metrics, isRunning, start ->
-            Merged(hr, bleState, metrics, isRunning, start)
+            hrAndBattery, ble.state, exercise.metrics, running, startTime,
+        ) { (hr, battery), bleState, metrics, isRunning, start ->
+            Merged(hr, battery, bleState, metrics, isRunning, start)
         }
 
         uiState = combine(merged, ticker) { m, now ->
@@ -289,6 +292,7 @@ object WorkoutController {
                 hrvMs = rollingRmssd.value(),
                 routePoints = _route.value,
                 hrStale = hrStale,
+                batteryPct = m.battery,
             )
         }.stateIn(scope, SharingStarted.Eagerly, UiState())
     }
@@ -549,6 +553,7 @@ object WorkoutController {
 
     private data class Merged(
         val hr: HrSample?,
+        val battery: Int?,
         val bleState: HeartRateBleClient.State,
         val metrics: ExerciseMetrics,
         val running: Boolean,

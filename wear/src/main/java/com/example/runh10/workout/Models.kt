@@ -51,4 +51,6 @@ data class UiState(
     val routePoints: List<Pair<Double, Double>> = emptyList(),
     /** True once a reading has arrived AND the strap has gone quiet for 5s+ (F3). */
     val hrStale: Boolean = false,
+    /** H10 battery %, null until read / when the Battery Service is absent. Never faked. */
+    val batteryPct: Int? = null,
 )

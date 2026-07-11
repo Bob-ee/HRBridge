@@ -75,6 +75,8 @@ data class PhoneRunUi(
     val workoutType: String = "RUN",
     /** True once a reading has arrived AND the strap has gone quiet for 5s+ (F3). */
     val hrStale: Boolean = false,
+    /** H10 battery %, null until read / when the Battery Service is absent. Never faked. */
+    val batteryPct: Int? = null,
 ) {
     enum class Phase { READY, LIVE, SAVE }
 }
@@ -157,6 +159,9 @@ object PhoneRecordController {
                     ble.connectedAddressAndName()?.let { (mac, name) -> devicePrefs.saveLastDevice(mac, name) }
                 }
             }
+        }
+        scope.launch {
+            ble.battery.collect { pct -> _ui.value = _ui.value.copy(batteryPct = pct) }
         }
         scope.launch {
             athleteStore.profile.collect { p ->
