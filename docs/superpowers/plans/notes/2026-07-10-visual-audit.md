@@ -154,3 +154,30 @@ Screenshots: `/private/tmp/claude-501/-Users-bobbywhiteley-Documents-Claude-Proj
 **Result: 14 PASS, 0 FAIL, 1 not checkable this session (GPS status line — requires a paired strap, deferred to Plan 4 per brief).**
 
 All Plan 3 watch fixes (V1, V2 adapted, V4 as checkable, V6, V7) hold up on real hardware. No regressions found. Do NOT start a run / no device-setting changes were honored throughout.
+
+---
+
+## Plan 4 verification (2026-07-11)
+
+Plan: `docs/superpowers/plans/2026-07-11-perfection-plan-4-gaps.md` (Task 4: H10 battery %, HR-based calories, resting-HR auto-update from Health Connect). Device state at verification time: watch reachable (`192.168.0.120:45471`); phone asleep/unreachable (`192.168.0.115:45027` refused) — all phone checks deferred to the morning checklist below, per plan constraint ("hardware notes: ... on-device checks that need them go to the runbook/morning list").
+
+**Watch checks performed:**
+
+- `./gradlew :wear:assembleDebug :mobile:assembleDebug` → BUILD SUCCESSFUL (both APKs up to date from prior Task 1/2/3 work, HEAD `e5940ae`).
+- Installed `wear-debug.apk` on the watch (`adb install -r`), force-stopped, relaunched via monkey launcher intent → landed on `MainActivity` (`topResumedActivity=...presentation.MainActivity`).
+- Screenshot `verify4_home.png` (`.../scratchpad/verify4/`): Home/Ready screen renders cleanly with no strap paired — "TAP TO PAIR STRAP" line present, no battery `· n%` segment, no null/blank artifacts, START RUN button and SETTINGS pill both intact. Confirms Task 1's battery-segment addition to the Ready line degrades gracefully when `battery == null` (unconfigured/no-strap state), as specified ("battery segment only when non-null").
+- No run was started; no device settings were changed.
+
+**Not checked tonight (phone unreachable):** Settings body-fields rows (Task 2), run-detail calorie hint (Task 2), resting-HR toggle subtitle states (Task 3). See morning checklist below.
+
+### MORNING CHECKLIST
+
+Phone (`192.168.0.115:45027` or USB if wireless ADB still flaky):
+
+1. **Install** — `adb install -r --user 0 mobile/build/outputs/apk/debug/mobile-debug.apk`; verify no stale copy under user 10 (`adb shell pm list packages --user 10 | grep runh10` should be empty, or if present confirm it's not shadowing the user-0 install — `pm list packages -u` cross-check).
+2. **Settings — body fields** — open Settings, screenshot the new BODY section (weight/birth-year/sex rows) rendering correctly with the existing stepper/picker idiom; confirm blank/unset state has no crash and no garbage default values.
+3. **Run detail — calorie hint** — open a run with `kcal == null` and no weight set; screenshot the "—" placeholder with the "set weight to enable" hint text (only when kcal null AND weight null per spec).
+4. **Resting-HR toggle subtitle** — Settings, screenshot both subtitle states: "Updated <relative time> from Health Connect" (if HC has resting-HR data) and the honest no-data state "No resting-HR data in Health Connect — enable Fitbit sync" (if not). Confirm toggle off → no auto-check subtitle noise.
+5. **Battery % live check** — pair the H10 strap on the watch, confirm the Ready line shows `· <n>%` and the phone sensor card shows the same battery segment; disconnect and confirm it reverts to no-segment (not a stale/frozen number).
+6. **Calorie sanity** — after a real run with weight/birth-year/sex all set, confirm the run-detail kcal value is in a plausible range for duration/HR (rough gut check, not exact) and that it persisted (survives app restart, appears in Health Connect as `ActiveCaloriesBurnedRecord`).
+7. **Resting-HR auto-update live** — after a night with the watch/Fitbit syncing resting HR to Health Connect, confirm the phone's next app-resume or the 24h WorkManager tick picks it up (subtitle updates to "Updated <relative time>..."), and that it does NOT overwrite a same-day manual entry (manual wins for the day, per `RestingHrPick` — auto only applies if strictly newer).
