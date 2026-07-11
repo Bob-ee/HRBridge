@@ -118,6 +118,11 @@ object WorkoutController {
         this.appContext = ctx
         ble = HeartRateBleClient(ctx)
         exercise = ExerciseClientManager(ctx)
+        // Recovery fast-path: a genuine HS fix arriving mid-fallback tears the
+        // fallback down immediately (same idempotent teardown as the tick path,
+        // which stays as the backstop and clears the re-engage clock ≤1 s later).
+        // The HS callback and this controller both run on the main looper.
+        exercise.onHsLocationDuringFallback = { stopFallback() }
         devicePrefs = DevicePrefs(ctx)
         store = SessionStore(ctx)
         recorder = SessionRecorder(scope, store)

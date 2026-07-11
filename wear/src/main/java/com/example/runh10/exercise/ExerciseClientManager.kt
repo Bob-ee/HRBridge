@@ -14,6 +14,7 @@ import androidx.health.services.client.data.ExerciseUpdate
 import androidx.health.services.client.data.LocationAccuracy
 import androidx.health.services.client.data.LocationAvailability
 import com.example.runh10.workout.ExerciseMetrics
+import com.example.runh10.workout.FallbackDistanceTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,23 @@ class ExerciseClientManager(context: Context) {
     /** True while the direct-location fallback owns the gps field (see [beginFallback]). */
     @Volatile private var fallbackActive: Boolean = false
 
+    /**
+     * Distance accumulator for the current fallback segment (non-null only while
+     * [fallbackActive]). Snapshots the frozen HS total on begin and integrates fused
+     * fixes on top, so splits/pace/summary keep advancing through the cutout.
+     */
+    private var fallbackDistance: FallbackDistanceTracker? = null
+
+    /**
+     * Invoked (main looper) when a genuine HS location fix arrives while the fallback
+     * is active — WorkoutController hooks its idempotent stopFallback() here so the
+     * fallback is torn down immediately on recovery instead of waiting up to ~1 s for
+     * the next tick (which would interleave dual-source LocRows). Both the HS callback
+     * (registered via the executor-less setUpdateCallback) and the controller's
+     * Main.immediate scope run on the main looper, so no lock is needed.
+     */
+    var onHsLocationDuringFallback: (() -> Unit)? = null
+
     private val callback = object : ExerciseUpdateCallback {
         override fun onExerciseUpdateReceived(update: ExerciseUpdate) {
             val latest = update.latestMetrics
@@ -66,7 +84,13 @@ class ExerciseClientManager(context: Context) {
             val cadence = latest.getData(DataType.STEPS_PER_MINUTE).lastOrNull()?.value
             _metrics.update {
                 it.copy(
-                    distanceMeters = distance ?: it.distanceMeters,
+                    // Monotonic floor (single point where HS distance lands in the
+                    // metrics): after a fallback segment HS's own total does NOT
+                    // include the fallback metres, so it comes back LOWER than our
+                    // accumulated total. See FallbackDistanceTracker.monotonic for
+                    // the honesty tradeoff (modest post-recovery under-count, never
+                    // a backward jump, never fabricated).
+                    distanceMeters = FallbackDistanceTracker.monotonic(distance, it.distanceMeters),
                     speedMps = speed ?: it.speedMps,
                     lat = location?.latitude ?: it.lat,
                     lon = location?.longitude ?: it.lon,
@@ -79,6 +103,10 @@ class ExerciseClientManager(context: Context) {
                     exerciseState = update.exerciseStateInfo.state.toString(),
                 )
             }
+            // HS delivered a real fix while the fallback was streaming → recovery.
+            // Tear the fallback down NOW rather than on the next 1 Hz tick, so no
+            // further dual-source LocRows interleave. Idempotent; main looper.
+            if (location != null && fallbackActive) onHsLocationDuringFallback?.invoke()
         }
 
         override fun onLapSummaryReceived(lapSummary: ExerciseLapSummary) {}
@@ -96,9 +124,12 @@ class ExerciseClientManager(context: Context) {
                 Log.d(TAG, "LocationAvailability=$availability")
                 val real = availability.toString()
                 lastHsAvailability = real
-                // Don't let a real HS availability change stomp the FALLBACK_ACTIVE marker
-                // while the fallback is running — provenance must stay honest in the file.
-                if (!fallbackActive) _metrics.update { it.copy(gps = real) }
+                // The intra-fallback HS availability history is the diagnostic
+                // deliverable — let it flow into the EvtRow trail even while the
+                // fallback runs. FALLBACK_ACTIVE already logged its own transition
+                // when the fallback began, so provenance stays readable; recovery
+                // detection is unaffected (it keys off lastHsLocationAtMs, not gps).
+                _metrics.update { it.copy(gps = real) }
             }
         }
     }
@@ -140,6 +171,10 @@ class ExerciseClientManager(context: Context) {
     /** Marks the direct-location fallback as active and announces it via the gps field. */
     fun beginFallback() {
         fallbackActive = true
+        // Snapshot the run's cumulative distance at the cutout instant; fused deltas
+        // accumulate on top. Fresh tracker = cleared anchor, so the first fused fix
+        // anchors only (no fabricated jump from the last HS position).
+        fallbackDistance = FallbackDistanceTracker(_metrics.value.distanceMeters ?: 0.0)
         _metrics.update { it.copy(gps = GPS_FALLBACK_ACTIVE) }
     }
 
@@ -147,8 +182,13 @@ class ExerciseClientManager(context: Context) {
      * Pushes a real fallback fix into the SAME metrics stream the recorder writes from,
      * so it lands as an ordinary LocRow (with accuracy) on the existing write path.
      * No interpolation — only fixes the FusedLocationProvider actually delivered.
+     * The gps field is NOT re-stamped here: FALLBACK_ACTIVE was announced once by
+     * [beginFallback], and HS availability changes are allowed through mid-fallback
+     * (their history is the diagnostic trail) — re-stamping every fix would ping-pong
+     * EvtRows against them.
      */
     fun pushFallbackLocation(lat: Double, lon: Double, alt: Double?, acc: Double?, speed: Double?) {
+        val cumulativeM = fallbackDistance?.onFix(lat, lon)
         _metrics.update {
             it.copy(
                 lat = lat,
@@ -156,14 +196,20 @@ class ExerciseClientManager(context: Context) {
                 altitude = alt ?: it.altitude,
                 accuracyM = acc ?: it.accuracyM,
                 speedMps = speed ?: it.speedMps,
-                gps = GPS_FALLBACK_ACTIVE,
+                distanceMeters = cumulativeM ?: it.distanceMeters,
             )
         }
     }
 
-    /** Ends the fallback and restores the real HS availability — an EvtRow transition. */
+    /**
+     * Ends the fallback and restores the real HS availability — an EvtRow transition.
+     * The accumulated fallback distance deliberately REMAINS in the metrics: the
+     * monotonic guard in [callback]'s update handler keeps HS's (lower, fallback-blind)
+     * post-recovery totals from regressing it.
+     */
     fun endFallback() {
         fallbackActive = false
+        fallbackDistance = null
         _metrics.update { it.copy(gps = lastHsAvailability) }
     }
 
