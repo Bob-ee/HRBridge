@@ -151,7 +151,7 @@ fun SettingsScreen(
             SettingsRow(
                 icon = null,
                 title = "Auto-update overnight",
-                subtitle = "From watch sleep & HRV data",
+                subtitle = autoRestingSubtitle(profile),
                 trailing = {
                     HeatToggle(profile.autoUpdateResting) { v -> scope.launch { store.setAutoUpdateResting(v) } }
                 },
@@ -324,6 +324,16 @@ fun SettingsScreen(
 }
 
 private fun Double.roundToOneDecimal(): String = String.format(java.util.Locale.US, "%.1f", this)
+
+/** Honest state for the "Auto-update overnight" row: off is plain; on reflects the last
+ * checkOnce outcome so a Fitbit-sync gap doesn't silently look like it's working. */
+private fun autoRestingSubtitle(profile: AthleteProfile): String = when {
+    !profile.autoUpdateResting -> "From watch sleep & HRV data"
+    profile.lastRestingAutoCheckHadData == false -> "No resting-HR data in Health Connect — enable Fitbit sync"
+    profile.restingSource == "auto" && profile.restingMeasuredAtMs != null ->
+        "Updated ${Fmt.agoLabel(profile.restingMeasuredAtMs)} from Health Connect"
+    else -> "From watch sleep & HRV data"
+}
 
 @Composable
 private fun SexOption(label: String, active: Boolean, onClick: () -> Unit) {

@@ -24,7 +24,10 @@ data class AthleteProfile(
     val maxHr: Int? = null,
     val restingHr: Int? = null,
     val restingMeasuredAtMs: Long? = null,
+    val restingSource: String? = null,     // "manual" | "auto" — who set the current restingHr
     val autoUpdateResting: Boolean = true,
+    val lastRestingAutoCheckAtMs: Long? = null,
+    val lastRestingAutoCheckHadData: Boolean? = null, // null = never checked yet
     val unitsMiles: Boolean = true,
     val voiceCoach: Boolean = true,
     val mileAnnouncements: Boolean = true,
@@ -42,7 +45,10 @@ class AthleteStore(private val context: Context) {
         val MAX = intPreferencesKey("max_hr")
         val REST = intPreferencesKey("resting_hr")
         val REST_AT = longPreferencesKey("resting_measured_at")
+        val REST_SOURCE = stringPreferencesKey("resting_source")
         val AUTO_REST = booleanPreferencesKey("auto_update_resting")
+        val AUTO_CHECK_AT = longPreferencesKey("resting_auto_check_at")
+        val AUTO_CHECK_HAD_DATA = booleanPreferencesKey("resting_auto_check_had_data")
         val MILES = booleanPreferencesKey("units_miles")
         val VOICE = booleanPreferencesKey("voice_coach")
         val MILE_ANN = booleanPreferencesKey("mile_announcements")
@@ -60,7 +66,10 @@ class AthleteStore(private val context: Context) {
             maxHr = p[K.MAX],
             restingHr = p[K.REST],
             restingMeasuredAtMs = p[K.REST_AT],
+            restingSource = p[K.REST_SOURCE],
             autoUpdateResting = p[K.AUTO_REST] ?: true,
+            lastRestingAutoCheckAtMs = p[K.AUTO_CHECK_AT],
+            lastRestingAutoCheckHadData = p[K.AUTO_CHECK_HAD_DATA],
             unitsMiles = p[K.MILES] ?: true,
             voiceCoach = p[K.VOICE] ?: true,
             mileAnnouncements = p[K.MILE_ANN] ?: true,
@@ -80,8 +89,21 @@ class AthleteStore(private val context: Context) {
     suspend fun setRestingHr(v: Int) = context.athleteDataStore.edit {
         it[K.REST] = v
         it[K.REST_AT] = System.currentTimeMillis()
+        it[K.REST_SOURCE] = "manual"
+    }
+    /** Overnight Health Connect auto-update (RestingHrUpdater) — only ever adopted when
+     * strictly newer than the current measurement, so a same-day manual entry still wins. */
+    suspend fun setRestingHrAuto(v: Int) = context.athleteDataStore.edit {
+        it[K.REST] = v
+        it[K.REST_AT] = System.currentTimeMillis()
+        it[K.REST_SOURCE] = "auto"
     }
     suspend fun setAutoUpdateResting(v: Boolean) = context.athleteDataStore.edit { it[K.AUTO_REST] = v }
+    /** Outcome of the last RestingHrUpdater.checkOnce pass, kept for the honest Settings subtitle. */
+    suspend fun setRestingAutoCheckResult(atMs: Long, hadData: Boolean) = context.athleteDataStore.edit {
+        it[K.AUTO_CHECK_AT] = atMs
+        it[K.AUTO_CHECK_HAD_DATA] = hadData
+    }
     suspend fun setUnitsMiles(v: Boolean) = context.athleteDataStore.edit { it[K.MILES] = v }
     suspend fun setVoiceCoach(v: Boolean) = context.athleteDataStore.edit { it[K.VOICE] = v }
     suspend fun setMileAnnouncements(v: Boolean) = context.athleteDataStore.edit { it[K.MILE_ANN] = v }

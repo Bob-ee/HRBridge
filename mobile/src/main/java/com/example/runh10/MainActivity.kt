@@ -10,6 +10,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.runh10.healthconnect.HealthConnectWriter
+import com.example.runh10.healthconnect.RestingHrUpdater
 import com.example.runh10.record.PhoneRecordController
 import com.example.runh10.ui.AppRoot
 import com.example.runh10.ui.SyncViewModel
@@ -28,11 +29,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         PhoneRecordController.init(applicationContext)
+        RestingHrUpdater.schedule(applicationContext)
         setContent {
             HeatTheme {
                 AppRoot(
                     vm = vm,
-                    onRequestPermissions = { requestPerms.launch(HealthConnectWriter.PERMISSIONS) },
+                    onRequestPermissions = { requestPerms.launch(HealthConnectWriter.ALL_PERMISSIONS) },
                 )
             }
         }

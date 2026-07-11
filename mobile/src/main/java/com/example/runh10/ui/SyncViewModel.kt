@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.runh10.data.RunRepository
+import com.example.runh10.healthconnect.RestingHrUpdater
 import com.example.runh10.record.PhoneRecordController
 import com.example.runh10.sync.PhoneSyncClient
 import kotlinx.coroutines.Job
@@ -45,6 +46,11 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
     fun onResume() {
         viewModelScope.launch {
             recoveryJob.join()
+            // Cheap and self-gated (toggle + its own permission check inside), so this can
+            // join the startup chain unconditionally — same idiom as the recovery/repush
+            // calls that bracket it. Covers the case where the phone was asleep overnight
+            // and the WorkManager job hasn't fired yet by the time the user opens the app.
+            runCatching { RestingHrUpdater.checkOnce(getApplication()) }
             val available = client.isHealthConnectReady()
             val granted = available && client.hasPermissions()
             _state.update { it.copy(hcAvailable = available, permissionsGranted = granted) }

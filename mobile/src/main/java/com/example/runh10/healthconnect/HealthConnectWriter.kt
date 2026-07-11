@@ -11,6 +11,7 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SpeedRecord
 import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
@@ -180,5 +181,11 @@ class HealthConnectWriter(private val context: Context) {
             HealthPermission.getWritePermission(HeartRateVariabilityRmssdRecord::class),
             HealthPermission.PERMISSION_WRITE_EXERCISE_ROUTE,
         )
+
+        // Requested alongside PERMISSIONS but NOT part of it: hasAllPermissions() gates the
+        // run-sync flow, and resting-HR auto-update is an optional, independently-gated
+        // feature (RestingHrUpdater checks it for itself) — a user declining just this one
+        // permission must not break ordinary Health Connect sync.
+        val ALL_PERMISSIONS: Set<String> = PERMISSIONS + HealthPermission.getReadPermission(RestingHeartRateRecord::class)
     }
 }
