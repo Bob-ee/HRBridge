@@ -122,7 +122,8 @@ fun ReadyScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "POLAR H10 · " + if (connected) "CONNECTED" else "CONNECTING…",
+                        text = (remembered?.name?.uppercase() ?: "POLAR H10") + " · " +
+                            if (connected) "CONNECTED" else "CONNECTING…",
                         fontFamily = Heat.sairaCondensed,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
@@ -131,8 +132,14 @@ fun ReadyScreen(
                     )
                 }
                 Spacer(Modifier.height(3.dp))
+                // ReadyScreen only ever shows pre-run, and Health Services GPS doesn't
+                // engage until the run actually starts — so a "searching"/"locked"
+                // status here would describe activity that isn't happening yet (and
+                // "locked" could never truthfully appear). Honest static copy instead.
+                // Live pre-run GPS sampling would need its own location stream — out of
+                // scope here; candidate for a later polish plan.
                 Text(
-                    text = if (ui.gpsLocked) "GPS locked" else "GPS searching",
+                    text = "GPS · ON AT START",
                     fontSize = 10.sp,
                     color = Heat.textMuted,
                 )

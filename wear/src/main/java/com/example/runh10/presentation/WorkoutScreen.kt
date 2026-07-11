@@ -15,7 +15,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,11 +105,15 @@ fun WorkoutFlow(
 ) {
     // HOME is always the initial/resting screen — cold or warm launch never starts on
     // Pairing (V7), regardless of whether a strap is currently remembered.
-    var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    // Deliberately `remember`, not `rememberSaveable`: process recreation (e.g. an OS
+    // memory-reclaim kill, not just cold launch) must always land on HOME (V7) rather
+    // than restoring whatever screen — including SETTINGS/PAIRING — was showing before.
+    var screen by remember { mutableStateOf(Screen.HOME) }
     // Where Settings was opened from, so BACK (in-app control AND system back gesture)
     // returns there instead of always bouncing to Home — this is the "real back stack"
     // for the one screen (Settings) that can be entered from more than one place.
-    var settingsOrigin by rememberSaveable { mutableStateOf(Screen.HOME) }
+    // Also deliberately `remember` — see `screen` above (V7).
+    var settingsOrigin by remember { mutableStateOf(Screen.HOME) }
     var showSummary by remember { mutableStateOf(false) }
     var summaryUi by remember { mutableStateOf<UiState?>(null) }
 
