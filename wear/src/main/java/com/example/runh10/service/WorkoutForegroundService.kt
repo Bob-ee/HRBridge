@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 class WorkoutForegroundService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var foregrounded = false
 
     /** Service-scoped coroutine scope — cancelled in onDestroy. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -56,9 +57,6 @@ class WorkoutForegroundService : Service() {
             }
 
             ACTION_CONNECT -> {
-                // Connect-only: start foreground (wake-lock + notification) and
-                // establish the BLE link, but do NOT start the exercise session.
-                // The Prep screen stays visible until the user taps Start.
                 val address = intent.getStringExtra(EXTRA_DEVICE) ?: return START_NOT_STICKY
                 val autoConnect = intent.getBooleanExtra(EXTRA_AUTO_CONNECT, false)
                 startAsForeground()
@@ -68,22 +66,32 @@ class WorkoutForegroundService : Service() {
             }
 
             ACTION_START -> {
-                // Begin-run: defensively (re)assert foreground + wake-lock before
-                // starting the exercise session. Under normal flow ACTION_CONNECT has
-                // already called both; but START_STICKY redelivery after a process kill
-                // can bring ACTION_START without a preceding ACTION_CONNECT in this
-                // process-incarnation. startForeground() is idempotent when already
-                // foreground; acquireWakeLock() is safe to call again.
-                startAsForeground()
-                acquireWakeLock()
+                // Normal flow: ACTION_CONNECT already put us in the foreground with a
+                // wake lock; don't rebuild the notification/OngoingActivity a second time.
+                if (!foregrounded) {
+                    startAsForeground()
+                    acquireWakeLock()
+                }
                 WorkoutController.init(applicationContext)
                 WorkoutController.beginRun()
+            }
+
+            // START_STICKY restart after a process kill: the intent is null (sticky
+            // restarts never redeliver the original action). The dead run's samples are
+            // already safe on disk (per-line flush) and will be finalized by the orphan
+            // scan on next app launch — so stop honestly instead of idling as a ghost
+            // service with no notification and no exercise.
+            null -> {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
             }
         }
         return START_STICKY
     }
 
     private fun startAsForeground() {
+        foregrounded = true
         createChannel()
         val (notification, ongoing) = buildNotificationWithOngoing()
         ongoingActivity = ongoing
