@@ -79,7 +79,7 @@ class RunRepository(private val context: Context) {
             precomputedHrvMs = precomputedHrvMs,
             kcal = kcal,
             movingMsOverride = movingMsOverride,
-        ).copy(feel = existing?.feel)
+        ).copy(feel = existing?.feel, hcPending = existing?.hcPending ?: false)
         dao.upsert(summary)
         summary
     }
