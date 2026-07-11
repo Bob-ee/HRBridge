@@ -47,4 +47,6 @@ data class UiState(
     val hrvMs: Double? = null,
     /** Decimated lat/lon trail for the summary route sketch. */
     val routePoints: List<Pair<Double, Double>> = emptyList(),
+    /** True once a reading has arrived AND the strap has gone quiet for 5s+ (F3). */
+    val hrStale: Boolean = false,
 )

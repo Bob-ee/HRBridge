@@ -73,6 +73,8 @@ data class PhoneRunUi(
     val currentLap: LiveLap? = null,
     val routePoints: List<Pair<Double, Double>> = emptyList(),
     val workoutType: String = "RUN",
+    /** True once a reading has arrived AND the strap has gone quiet for 5s+ (F3). */
+    val hrStale: Boolean = false,
 ) {
     enum class Phase { READY, LIVE, SAVE }
 }
@@ -126,6 +128,8 @@ object PhoneRecordController {
     private val runJobs = mutableListOf<Job>()
     private var tts: TextToSpeech? = null
     private var pendingBundleRows = mutableListOf<com.example.runh10.shared.model.SampleRow>()
+    /** Wall-clock time of the last HR sample, from any BLE connection (Ready or Live). */
+    @Volatile private var lastHrAtMs: Long = 0L
 
     fun init(context: Context) {
         if (initialized) return
@@ -157,18 +161,24 @@ object PhoneRecordController {
                 _ui.value = _ui.value.copy(zoneEdges = zoneCalc?.edges ?: emptyList())
             }
         }
-        // Live HR into the ready/live UI even before a run starts.
+        // Live HR into the ready/live UI even before a run starts. Runs for the process
+        // lifetime, so this is the single stamp point that covers both READY and LIVE
+        // display (the run-scoped collector in beginRun only exists mid-run).
         scope.launch {
             ble.hr.filterNotNull().collect { s ->
+                lastHrAtMs = System.currentTimeMillis()
                 _ui.value = _ui.value.copy(
                     bpm = s.bpm,
                     hrZone = zoneCalc?.zoneFor(s.bpm),
                 )
             }
         }
-        // 1 Hz ticker for clocks + derived pace fields while live.
+        // 1 Hz ticker: staleness always (READY + LIVE); clocks + derived pace only while live.
         scope.launch {
             while (true) {
+                val now = System.currentTimeMillis()
+                val stale = lastHrAtMs > 0 && now - lastHrAtMs > 5_000
+                if (_ui.value.hrStale != stale) _ui.value = _ui.value.copy(hrStale = stale)
                 if (_ui.value.phase == PhoneRunUi.Phase.LIVE) tick()
                 delay(1000)
             }

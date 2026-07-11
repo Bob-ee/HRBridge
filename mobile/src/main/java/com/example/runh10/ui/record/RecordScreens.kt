@@ -220,7 +220,7 @@ private fun ReadyContent(ui: PhoneRunUi, profile: AthleteProfile, onClose: () ->
                             fontFamily = Heat.sairaCondensed,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 26.sp,
-                            color = Heat.brandRed,
+                            color = if (ui.hrStale) Heat.brandRed.copy(alpha = 0.4f) else Heat.brandRed,
                         )
                         Text("LIVE", fontSize = 10.sp, letterSpacing = 0.8.sp, color = Heat.textDim)
                     }
@@ -409,7 +409,7 @@ private fun LiveContent(ui: PhoneRunUi, profile: AthleteProfile) {
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 72.sp,
                     lineHeight = 64.sp,
-                    color = Heat.zoneColor(ui.hrZone),
+                    color = if (ui.hrStale) Heat.zoneColor(ui.hrZone).copy(alpha = 0.4f) else Heat.zoneColor(ui.hrZone),
                 )
                 Text("BPM", fontSize = 12.sp, letterSpacing = 1.4.sp, color = Heat.textMuted)
                 Spacer(Modifier.height(8.dp))

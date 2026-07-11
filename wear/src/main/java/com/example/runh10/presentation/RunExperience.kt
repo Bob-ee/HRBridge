@@ -151,7 +151,11 @@ private fun HrHeroScreen(ui: UiState, onStartNow: () -> Unit) {
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 92.sp,
                 lineHeight = 80.sp,
-                color = if (ui.bpm != null) zoneColor(ui.hrZone) else Heat.textFaint,
+                color = when {
+                    ui.bpm == null -> Heat.textFaint
+                    ui.hrStale -> zoneColor(ui.hrZone).copy(alpha = 0.4f)
+                    else -> zoneColor(ui.hrZone)
+                },
             )
             Text(
                 text = "BPM",

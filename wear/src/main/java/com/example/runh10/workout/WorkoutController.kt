@@ -87,6 +87,8 @@ object WorkoutController {
 
     @Volatile private var zoneCalc: ZoneCalculator? = null
     @Volatile private var currentSettings: RunSettings = RunSettings()
+    /** Wall-clock time of the last HR sample, from any BLE connection (Ready or Live). */
+    @Volatile private var lastHrAtMs: Long = 0L
     private lateinit var appContext: Context
     private lateinit var voice: VoiceCoach
 
@@ -146,6 +148,12 @@ object WorkoutController {
             }
         }
 
+        // Stamp freshness on every HR sample — runs for the process lifetime, so it
+        // covers both the Prep (Ready) screen and a live run (F3: stale-HR display).
+        scope.launch {
+            ble.hr.filterNotNull().collect { lastHrAtMs = System.currentTimeMillis() }
+        }
+
         val merged = combine(
             ble.hr, ble.state, exercise.metrics, running, startTime,
         ) { hr, bleState, metrics, isRunning, start ->
@@ -194,6 +202,10 @@ object WorkoutController {
                         }
                 }
             }
+
+            // Never-had-a-reading keeps the existing "--" behavior; only a reading that
+            // has gone quiet 5s+ counts as stale (F3).
+            val hrStale = lastHrAtMs > 0 && now - lastHrAtMs > 5_000
 
             val currentZoneCalc = zoneCalc
             val hrZone = if (bpm != null) currentZoneCalc?.zoneFor(bpm) else null
@@ -249,6 +261,7 @@ object WorkoutController {
                 lapDeltaSecPerMi = lapDelta,
                 hrvMs = rollingRmssd.value(),
                 routePoints = _route.value,
+                hrStale = hrStale,
             )
         }.stateIn(scope, SharingStarted.Eagerly, UiState())
     }
