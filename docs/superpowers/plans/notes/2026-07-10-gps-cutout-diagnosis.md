@@ -147,3 +147,21 @@ $ADB -s $SERIAL logcat -v time | grep --line-buffered -iE 'DisplayPowerControlle
 ```
 
 After the run, diff the `EvtRow` timestamp in the session file against the screen-off line: if GPS availability drops within a second or two of the display sleeping, the screen-off/background-location hypothesis is confirmed and fix step 2 is the change to ship.
+
+---
+
+## Addendum (controller, from prior-session records): wake attempts did NOT restore GPS
+
+During the June 30 investigation Bob confirmed he woke the watch multiple times mid-run and GPS never
+reconnected. Caveat: "woke the watch" may mean watchface only, not re-foregrounding the app — the
+visibility gate cares about the latter. Implications for the fix task:
+
+1. If the app WAS re-foregrounded and GPS stayed dead, the visibility/permission gate alone cannot be
+   the whole story — Health Services likely never re-engages its location engine after the initial
+   loss. The fix must therefore ALSO handle re-engagement (e.g., detect a prolonged
+   LocationAvailability=UNAVAILABLE while RUNNING and re-register/restart the exercise's location
+   stream, or fall back to a direct FusedLocationProvider stream inside the FGS, which the typed
+   location FGS + wake lock already entitle us to).
+2. The recommended fix package for Plan 3 stays: (a) add + request ACCESS_BACKGROUND_LOCATION,
+   (b) add `accuracy` to LocRow, (c) keep EvtRow validation, (d) add a defensive re-engagement path
+   per (1). The instrumented run remains the definitive arbiter.
