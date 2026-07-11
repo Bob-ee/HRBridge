@@ -7,6 +7,7 @@ import com.example.runh10.shared.model.RrRow
 import com.example.runh10.shared.model.SampleRow
 import com.example.runh10.shared.model.SessionMeta
 import com.example.runh10.shared.serial.NdjsonSerializer
+import com.example.runh10.shared.serial.SafeLineWriter
 import com.example.runh10.workout.ExerciseMetrics
 import com.example.runh10.workout.HrSample
 import kotlinx.coroutines.CoroutineScope
@@ -15,14 +16,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
-import java.io.BufferedWriter
 import java.time.ZoneId
 
 class SessionRecorder(
     private val scope: CoroutineScope,
     private val store: SessionStore,
 ) {
-    private var writer: BufferedWriter? = null
+    private var writer: SafeLineWriter? = null
     private var meta: SessionMeta? = null
     private val jobs = mutableListOf<Job>()
     val activeSessionId: String? get() = meta?.sessionId
@@ -33,7 +33,7 @@ class SessionRecorder(
     ): SessionMeta {
         val m = store.createSession(ZoneId.systemDefault().id)
         meta = m
-        writer = store.fileFor(m.sessionId).bufferedWriter()
+        writer = SafeLineWriter(store.fileFor(m.sessionId).bufferedWriter())
         jobs += scope.launch {
             hr.filterNotNull().collect { s ->
                 writeLine(HrRow(ts = s.timestamp, bpm = s.bpm))
@@ -69,14 +69,13 @@ class SessionRecorder(
         return m
     }
 
-    @Synchronized private fun writeLine(row: SampleRow) {
-        val w = writer ?: return
-        w.write(NdjsonSerializer.encode(row)); w.newLine(); w.flush()
+    private fun writeLine(row: SampleRow) {
+        writer?.writeLine(NdjsonSerializer.encode(row))
     }
 
     suspend fun stop() {
         jobs.forEach { it.cancel() }; jobs.clear()
-        writer?.flush(); writer?.close(); writer = null
+        writer?.close(); writer = null
         meta?.let { store.finalize(it.sessionId, System.currentTimeMillis()) }
         meta = null
     }

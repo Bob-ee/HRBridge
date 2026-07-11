@@ -28,6 +28,7 @@ import com.example.runh10.shared.run.RunStateMachine
 import com.example.runh10.shared.run.ScanDevice
 import com.example.runh10.shared.run.SplitTracker
 import com.example.runh10.shared.serial.NdjsonSerializer
+import com.example.runh10.shared.serial.SafeLineWriter
 import com.example.runh10.shared.zones.ZoneCalculator
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -45,7 +46,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
-import java.io.BufferedWriter
 import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
@@ -118,7 +118,7 @@ object PhoneRecordController {
     private var finishedEndMs = 0L
     private var finishedMovingMs = 0L
     private var meta: SessionMeta? = null
-    private var writer: BufferedWriter? = null
+    private var writer: SafeLineWriter? = null
     private var zoneCalc: ZoneCalculator? = null
     private var hrSum = 0L
     private var hrCount = 0
@@ -263,7 +263,7 @@ object PhoneRecordController {
             state = SessionState.RECORDING,
         )
         meta = m
-        writer = repo.fileFor(m.sessionId).bufferedWriter()
+        writer = SafeLineWriter(repo.fileFor(m.sessionId).bufferedWriter())
 
         clock.start()
         _ui.value = _ui.value.copy(
@@ -375,14 +375,13 @@ object PhoneRecordController {
             val live = splitTracker.currentLap(runDist, finishedMovingMs)
             if (live.distanceM > 15.0) splits += splitTracker.closeNow(runDist, finishedMovingMs)
         }
-        writer?.flush()
         _ui.value = _ui.value.copy(phase = PhoneRunUi.Phase.SAVE, splits = splits.toList())
     }
 
     /** Persist: summary into Room (+ optional Health Connect write). Returns sessionId. */
     suspend fun saveRun(name: String, feel: String?): String? {
         val m = meta ?: return null
-        writer?.flush(); writer?.close(); writer = null
+        writer?.close(); writer = null
         val endMs = finishedEndMs.takeIf { it > 0 } ?: System.currentTimeMillis()
         val bundle = SessionBundle(
             meta = m.copy(endEpochMs = endMs, state = SessionState.FINALIZED),
@@ -422,8 +421,7 @@ object PhoneRecordController {
     @Synchronized
     private fun writeRow(row: com.example.runh10.shared.model.SampleRow) {
         pendingBundleRows += row
-        val w = writer ?: return
-        w.write(NdjsonSerializer.encode(row)); w.newLine()
+        writer?.writeLine(NdjsonSerializer.encode(row))
     }
 
     private fun say(text: String) {
