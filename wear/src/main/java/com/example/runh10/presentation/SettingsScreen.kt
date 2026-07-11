@@ -155,6 +155,7 @@ fun SettingsScreen(
                     .clickable(enabled = !measuring) {
                         measuring = true
                         elapsedSec = 0
+                        noStrapData = false
                         scope.launch {
                             val result = onMeasureResting { sec -> elapsedSec = sec }
                             noStrapData = result <= 0

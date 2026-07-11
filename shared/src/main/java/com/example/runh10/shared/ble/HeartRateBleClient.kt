@@ -128,7 +128,7 @@ class HeartRateBleClient(private val context: Context) {
 
     fun connectedAddressAndName(): Pair<String, String>? {
         val addr = targetAddress ?: return null
-        return addr to (targetName ?: "Polar H10")
+        return addr to (targetName ?: DEFAULT_STRAP_NAME)
     }
 
     fun disconnect() {
@@ -249,6 +249,7 @@ class HeartRateBleClient(private val context: Context) {
 
     companion object {
         private const val TAG = "HeartRateBleClient"
+        const val DEFAULT_STRAP_NAME = "Polar H10"
         val HR_SERVICE: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         val HR_MEASUREMENT: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
         val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")

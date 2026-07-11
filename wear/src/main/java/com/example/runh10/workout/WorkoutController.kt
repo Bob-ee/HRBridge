@@ -40,8 +40,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 object WorkoutController {
 
-    /** Generic placeholder name used only when no real advertised/persisted name is known. */
-    private const val GENERIC_STRAP_NAME = "Polar H10"
+    /** Generic placeholder name used only when no real advertised/persisted name is known.
+     * The true origin of this fallback is HeartRateBleClient.connectedAddressAndName()'s
+     * targetName ?: DEFAULT_STRAP_NAME fallback — the persistence guard here must match it exactly. */
+    private val GENERIC_STRAP_NAME = HeartRateBleClient.DEFAULT_STRAP_NAME
 
     private var initialized = false
     private lateinit var ble: HeartRateBleClient
