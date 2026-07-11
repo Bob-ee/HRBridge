@@ -1,0 +1,126 @@
+# HR Bridge v2.0 — On-Device Visual Audit
+
+Date: 2026-07-10/11
+Devices:
+- PHONE: Pixel 9 Pro, serial `192.168.0.115:45027`, v2.0 mobile app (`com.example.runh10`)
+- WATCH: Pixel Watch 3, serial `192.168.0.120:45471`, v2.0 wear app (`com.example.runh10`, round display, 456×456)
+
+Screenshots: `/private/tmp/claude-501/-Users-bobbywhiteley-Documents-Claude-Projects-WatchApp/47bed566-0ba0-4220-819b-bb0628f9c2a3/scratchpad/audit/` (filenames referenced per screen below).
+
+Design reference: `HRBridge Phone.dc.html`, `HRBridge Watch.dc.html`, `README.md` in `.../scratchpad/mocks/design_handoff_fable5/`.
+
+## Status
+
+**PHONE: BLOCKED.** The phone dropped off wireless ADB before any phone screenshots could be captured and never came back despite ~20 reconnect attempts over 6+ minutes (`adb connect` refused every time; mDNS kept advertising the `_adb-tls-connect._tcp` service at the same address/port, but the TCP connection itself was refused throughout — consistent with the device being asleep/screen-locked, which on Pixel phones suspends the wireless-debugging listener even though the mDNS record lingers). No USB or physical access was available to restore it. **None of the 8 P1 insets checks could be performed.** This needs a re-run once the phone is confirmed awake and reconnectable.
+
+**WATCH: DONE.** Every reachable watch screen was captured and inspected, including several screens found only by trial taps against invisible/undocumented UI elements. Two P1-severity navigation/visibility bugs were found.
+
+## Summary table
+
+| Screen | Verdict | Findings |
+|---|---|---|
+| Phone — Feed | NOT REACHABLE (phone offline) | — |
+| Phone — Run Detail | NOT REACHABLE (phone offline) | — |
+| Phone — Trends | NOT REACHABLE (phone offline) | — |
+| Phone — Watch tab | NOT REACHABLE (phone offline) | — |
+| Phone — Profile | NOT REACHABLE (phone offline) | — |
+| Phone — Settings | NOT REACHABLE (phone offline) | — |
+| Phone — Resting-HR measure | NOT REACHABLE (phone offline) | — |
+| Phone — Record Ready | NOT REACHABLE (phone offline) | — |
+| Watch — Home / Ready | PASS (visual) / FAIL (findability) | 2 (V1 P1, V2 P2) |
+| Watch — Settings (full scroll) | PASS with notes | 3 (V3 P3, V4 P2, V5 P3) |
+| Watch — Strap pairing | PASS | 0 |
+| Watch — Resting-HR (inline) | FAIL | 1 (V6 P2) |
+| Watch — Navigation architecture (cross-screen) | FAIL | 1 (V7 P1) |
+| Watch — Tile carousel | NOT REACHABLE (no HR Bridge tile registered) | — |
+| Watch — Music / Metrics / Laps / Controls | NOT REACHABLE (in-run only; run not started per instructions) | — |
+
+Total findings: **7** (P1: 2, P2: 3, P3: 2).
+
+---
+
+## Phone — all screens
+
+**Not reachable.** The phone (`192.168.0.115:45027`) was online at task start but went offline before the first screenshot and never accepted an ADB connection again despite repeated attempts spaced over 6+ minutes, including two dedicated polling windows (8 tries @ 8s, 12 tries @ 12s) plus manual retries. `adb mdns services` confirmed the service was still being advertised at the same address the whole time, but every `adb connect` returned `Connection refused` — i.e. this is not a stale-address problem, the device's ADB listener itself was not accepting connections (most consistent with the phone's screen being off/locked; Pixel wireless debugging typically stops accepting new connections in that state even though the mDNS record is cached/still broadcast). No physical or USB access was available to wake it or re-enable wireless debugging.
+
+**Consequence: all 8 P1 insets-fix checks (Feed, Run Detail, Trends, Watch tab, Profile, Settings, Resting-HR, Record Ready) are unverified this session.** This is the primary gap in this audit — the phone side needs to be re-run.
+
+---
+
+## Watch — Home / Ready screen
+
+Files: `w_home.png`, `w_home3.png`, `w_appswipeup.png`, `w_home_bottom.png`, `w_home_bottom_bright.png` (2×/3× brightness+contrast crop of the lower third).
+
+Layout matches the mock's "Ready" screen reasonably well: "HR BRIDGE" wordmark + heartbeat glyph top, large circular brand-gradient START/RUN button centered. This screen appeared automatically on the very first `am start` of the session (app was already running from install).
+
+**V1 (P1 — invisible/undiscoverable control).** `uiautomator dump` on this screen reveals a `clickable=true, enabled=true` text element labeled `"SETTINGS"` at bounds `[163,366][294,456]` (bottom quarter of the screen, mostly under/behind the START circle). It renders as **completely invisible** — confirmed by cropping and boosting brightness 3× / contrast 2× on that region (`w_home_bottom_bright.png`): no glyph or text is visible at any level. A blind tap sweep across that bounding box (5 points) eventually landed on it and did navigate to Settings, so the control is functional, just entirely unlabeled to a real user — there is no visual affordance at all indicating Settings is reachable from Home. A user has no way to discover it short of trial-and-error tapping under the Start button.
+
+**V2 (P2 — mock deviation, missing sensor/GPS status).** The mock's watch "Ready" screen (README §"7. Ready") specifies "logo, big circular START, 'POLAR H10 · 87%' + 'GPS locked'" status lines under/around the button. The actual Home screen shows no sensor or GPS status at all — just the logo and the button. A runner has no glanceable confirmation the H10 strap or GPS is ready before starting.
+
+---
+
+## Watch — Settings (full scroll, 7 frames)
+
+Files: `w_settings.png` (top), `w_settings_scrolled.png` → `w_settings_scrolled6.png` (incremental scroll), `w_settings_bottom.png` (bottom, showing BACK).
+
+Content, top to bottom: title "Settings" → Polar H10 device row (name + "tap to change strap" + status dot) → GPS "High" row → Units "Miles" row → **HEART RATE** section (Age stepper, Max HR stepper, "Measure resting HR" button) → **AUDIO COACHING** section (Voice coach / Split time / Pace / HR zone toggles, all on/orange) → **RUN** section (Auto-pause toggle, on) → BACK button.
+
+**V3 (P3 — scope beyond mock).** The mock's watch Settings screen (README §"9. Settings") specs only 3 rows: Polar H10 / GPS / Units. The real screen is considerably richer (Age, Max HR, resting-HR measurement, 4 audio-coaching toggles, auto-pause) — not a defect, but worth a design-team sync since the swipe-canvas mock never depicted this content; nothing to compare it against for visual-hierarchy correctness, and it's a much longer scroll than the round-display "keep interactive elements within ~78% diameter" guidance implies for a single circular screen.
+
+**V4 (P2 — state inconsistency).** On first visiting Settings, the sensor row reads **"Polar H10 182CCF39"** (name + device ID). After navigating into the strap-pairing screen and back out via its "SETTINGS" link, the same row reads just **"Polar H10"** — the device-ID suffix silently disappears and does not come back on subsequent views this session. Minor but a real inconsistency in a paired-device identity string.
+
+**V5 (P3 — connection-status dot).** The Polar H10 row's status dot renders gray/neutral rather than the mock's "green dot" for a configured device. Given the H10 strap was not physically worn during this audit, this is very plausibly *correct* (paired-but-not-currently-connected state) rather than a bug — flagging only because the dot color semantics weren't otherwise verifiable this session.
+
+---
+
+## Watch — Strap pairing screen
+
+File: `w_strap_pairing.png`.
+
+Reached via the "SETTINGS" link visible at the bottom of the Pairing screen (see Navigation architecture below) and, separately, by tapping the Polar H10 row in Settings. Shows "PAIR YOUR STRAP" title with heartbeat glyph, a full-width brand-gradient "SCAN" button, explanatory copy ("No straps yet — tap Scan and wake the H10 (moisten the pads)."), and a "SETTINGS" text link at the bottom. Clean, legible, no defects found. SCAN was not tapped (avoids initiating a real BLE scan/pairing action beyond what's needed for the audit).
+
+---
+
+## Watch — Resting-HR measurement (inline, in Settings)
+
+Files: `w_resting_hr.png` ("Measuring… (60s)"), `w_resting_hr_progress.png` and `w_resting_hr_progress2.png` (~15s apart, same text), then transitions to "No strap data — wear the H10".
+
+Tapping "Measure resting HR" does not open a dedicated screen (the phone mock's screen 8 has a full dashed-ring/countdown/live-BPM treatment; the watch mock does not spec an equivalent screen, so a simpler watch treatment is reasonable in principle). What was observed:
+
+**V6 (P2 — no live progress feedback / dead-end error copy).** The button's label switches in place to "Measuring… (60s)" and **stays frozen at "(60s)" for the ~15–20 seconds observed** — no visible countdown, ring, or other progress indicator ticks during that window. It then jumps straight to a terminal state, "No strap data — wear the H10," with no retry affordance surfaced in the same view. (This end state is expected given the H10 wasn't actually worn during this audit — the concern is the static countdown during the "measuring" phase, which gives a runner no feedback that anything is happening.)
+
+---
+
+## Watch — Navigation architecture (cross-screen)
+
+**V7 (P1 — Home becomes unreachable after the app is backgrounded/killed).** This was reproduced twice, consistently:
+
+1. Force-stop the app, then relaunch (`am start`) — simulating what happens after the OS reclaims the process, a reboot, or an app update. Result: the app opens directly to the **Pair-your-strap screen**, not Home (`w_home_final2.png`, `w_home_verify2.png` — both 31,339-byte pairing-screen captures).
+2. From Pairing, the only exit is the visible "SETTINGS" link → Settings.
+3. From Settings, the only exit is the "BACK" button at the bottom of the scroll → returns to **Pairing**, not Home.
+4. The Android system back button from Settings does not navigate within the app at all — it exits the app entirely, back to the watch's tile carousel (`w_check2.png`).
+5. The *only* path back to the true Home/Ready screen found during this entire session was the invisible bottom hotspot described in V1 — which is itself a Home→Settings link, not a way in from elsewhere. In other words, once the app is cold/warm-relaunched with no strap actively connected, **there was no discovered UI path back to Home** during this audit.
+
+Net effect: a disconnected sensor (a completely ordinary state — first install, watch reboot, app update, or simply the strap not being worn yet) traps navigation in a Pairing⇄Settings loop, contradicting the mock's Home-first navigation model where Home/Ready is the one-swipe-from-watchface front door regardless of sensor state.
+
+---
+
+## Watch — Tile carousel
+
+Files: `w_watchface.png` (watchface), `w_tile1.png`–`w_tile9.png` (Steps → Heart rate → Quick start → Weather → Sleep → Today/Calendar → Gemini → ECG → "Add new" — 9 swipes, full carousel).
+
+**Not reachable / not found.** Swiped through the entire tile carousel from the watchface (confirmed reaching the terminal "Add new" tile) and found only stock Wear OS tiles. No HR Bridge tile was present. This may simply mean the app hasn't registered/pinned a Wear Tile in this build (design mock screen 1, "Tile — quick-launch front door," maps to `androidx.wear.tiles`) — adding one would require changing device tile configuration, which is out of scope for this audit per the no-device-setting-changes constraint.
+
+## Watch — Music / Metrics / Laps / Run Controls
+
+**Not reachable.** Per the design's navigation model, these are pages of the in-run swipe pager (reached by swiping from the **HR hero**, which is itself only shown *during* an active run) — not accessible from the pre-run Home/Ready screen. Swiping up/down/left/right from Home produced no screen change at all (confirmed via before/after screenshot diffing). Starting a run was explicitly out of scope for this audit, so Music, Metrics, Laps, and Run Controls could not be captured.
+
+---
+
+## Screens not reachable and why
+
+| Screen | Reason |
+|---|---|
+| Phone: Feed, Run Detail, Trends, Watch tab, Profile, Settings, Resting-HR, Record Ready | Phone dropped off wireless ADB before capture and never reconnected despite ~20 attempts over 6+ minutes; no physical/USB access to recover it. |
+| Watch: HR Bridge Tile (carousel) | Full 9-tile carousel swept from the watchface; no HR Bridge tile registered/pinned in this build. |
+| Watch: Music, Metrics, Laps, Run Controls | These are in-run swipe-pager screens only reachable while a run is active; starting a run was explicitly excluded from this audit's scope. |
