@@ -57,7 +57,6 @@ fun ReadyScreen(
     onPairStrap: () -> Unit,
 ) {
     val connected = ui.hrState == "CONNECTED"
-    val hasStrap = remembered != null
 
     Column(
         modifier = Modifier
@@ -112,7 +111,7 @@ fun ReadyScreen(
         Spacer(Modifier.height(9.dp))
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (hasStrap) {
+            if (remembered != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.size(6.dp).background(
@@ -122,7 +121,7 @@ fun ReadyScreen(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = (remembered?.name?.uppercase() ?: "POLAR H10") + " · " +
+                        text = remembered.name.uppercase() + " · " +
                             if (connected) "CONNECTED" else "CONNECTING…",
                         fontFamily = Heat.sairaCondensed,
                         fontWeight = FontWeight.Bold,

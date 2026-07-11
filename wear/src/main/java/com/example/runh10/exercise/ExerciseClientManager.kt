@@ -135,6 +135,20 @@ class ExerciseClientManager(context: Context) {
     }
 
     suspend fun start() {
+        // Per-run reset: this manager is process-scoped, so without this every field
+        // below survives into the next run in the same process. The monotonic distance
+        // floor (see [callback]'s FallbackDistanceTracker.monotonic) makes that
+        // whole-run-corrupting — a stale cumulative distance PINS run 2's total
+        // (max(new≈0, old)=old) → fabricated LocRows/splits, and a stale
+        // lastHsLocationAtMs fires a spurious REENGAGE_ATTEMPT at run-2 start. Clear
+        // metrics + HS bookkeeping + any active fallback (same fields endFallback()
+        // clears; no metrics write needed since we reset _metrics to defaults here)
+        // (final-review N1).
+        _metrics.value = ExerciseMetrics()
+        lastHsLocationAtMs = 0L
+        lastHsAvailability = "UNKNOWN"
+        fallbackActive = false
+        fallbackDistance = null
         val config = ExerciseConfig.builder(ExerciseType.RUNNING)
             .setDataTypes(setOf(DataType.LOCATION, DataType.SPEED, DataType.DISTANCE_TOTAL, DataType.STEPS_PER_MINUTE))
             .setIsAutoPauseAndResumeEnabled(false)

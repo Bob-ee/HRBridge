@@ -18,7 +18,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -161,7 +160,12 @@ class MainActivity : ComponentActivity() {
 
                         // Auto-connect to the remembered strap on first composition
                         // (connect-only — does NOT start the run).
-                        var autoConnected by rememberSaveable { mutableStateOf(false) }
+                        // Deliberately `remember`, not `rememberSaveable` (same V7
+                        // rationale as WorkoutFlow's `screen`): a process recreation
+                        // (OS memory-reclaim kill, not just cold launch) must re-run
+                        // auto-connect — reconnecting to the persisted strap after a
+                        // process death is the desired behavior, not a bug to suppress.
+                        var autoConnected by remember { mutableStateOf(false) }
                         LaunchedEffect(remembered) {
                             if (!autoConnected && remembered != null) {
                                 autoConnected = true
@@ -181,7 +185,11 @@ class MainActivity : ComponentActivity() {
                         WorkoutFlow(
                             ui = ui,
                             devices = devices,
-                            remembered = pendingDevice,
+                            // Home's strap status must honor the persisted strap first
+                            // (so a process-death restore shows it and auto-connects),
+                            // falling back to the transient connect-in-progress device
+                            // only when nothing is persisted yet (final-review N2).
+                            remembered = remembered ?: pendingDevice,
                             pairedStrap = remembered,
                             settings = settings,
                             media = mediaClient,

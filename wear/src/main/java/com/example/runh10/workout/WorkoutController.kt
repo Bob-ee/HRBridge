@@ -19,7 +19,6 @@ import com.example.runh10.zones.ZoneCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -312,9 +312,15 @@ object WorkoutController {
             }
             try {
                 withTimeoutOrNull(60_000L) {
-                    ble.hr.filterNotNull().collect { sample ->
+                    // Collect at most 40 samples, then let the flow COMPLETE normally.
+                    // The prior `cancel()` early-exit cancelled this coroutineScope on
+                    // the success path too, which propagated up and froze the caller's
+                    // Settings countdown UI before `measuring=false` could run. take(40)
+                    // bounds the collection without cancelling anything, so the success
+                    // path returns cleanly and the caller's finally/post-code runs
+                    // (final-review N4). 60s timeout + lowest-20% below unchanged.
+                    ble.hr.filterNotNull().take(40).collect { sample ->
                         readings += sample.bpm
-                        if (readings.size >= 40) cancel()
                     }
                 }
             } finally {
