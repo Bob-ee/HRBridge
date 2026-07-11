@@ -124,3 +124,33 @@ Files: `w_watchface.png` (watchface), `w_tile1.png`–`w_tile9.png` (Steps → H
 | Phone: Feed, Run Detail, Trends, Watch tab, Profile, Settings, Resting-HR, Record Ready | Phone dropped off wireless ADB before capture and never reconnected despite ~20 attempts over 6+ minutes; no physical/USB access to recover it. |
 | Watch: HR Bridge Tile (carousel) | Full 9-tile carousel swept from the watchface; no HR Bridge tile registered/pinned in this build. |
 | Watch: Music, Metrics, Laps, Run Controls | These are in-run swipe-pager screens only reachable while a run is active; starting a run was explicitly excluded from this audit's scope. |
+
+---
+
+## 2026-07-11 re-verification (watch, post-Plan-3)
+
+Device: Pixel Watch 3, `192.168.0.120:45471`, wear-debug installed from branch `master` HEAD `6d4ca78`. Watch had no strap remembered for this session (confirms the "unconfigured" paths below; strap-dependent paths — GPS status line with a paired strap, live BPM, connected-state naming — are out of scope per Plan 3 Task 5 brief and deferred to Plan 4).
+
+Screenshots: `/private/tmp/claude-501/-Users-bobbywhiteley-Documents-Claude-Projects-WatchApp/47bed566-0ba0-4220-819b-bb0628f9c2a3/scratchpad/verify3/`.
+
+| # | Check | Verdict | Screenshot(s) |
+|---|---|---|---|
+| 1 | Cold-launch (force-stop → `am start`) lands on Home | PASS | `v1_coldlaunch2.png` |
+| 2 | V1 — SETTINGS control visibly rendered (no longer invisible) | PASS | `v1_coldlaunch2.png` |
+| 3 | V2 (adapted) — strap status line reads "TAP TO PAIR STRAP" when unconfigured | PASS | `v1_coldlaunch2.png` |
+| 4 | V2 (adapted) — "GPS · ON AT START" line | NOT CHECKABLE (only renders when `hasStrap` is true; no strap remembered this session — confirmed in source, `ReadyScreen.kt:115-145`) | — |
+| 5 | SETTINGS pill uiautomator bounds fully inside the 456px circle | PASS (with note) | `home_dump.xml`; visible pixel bbox of the pill fully inside r=228 (max corner dist 211.2px); the invisible clickable touch-target parent node's bottom-right corner sits ~4px past r=228 (dist 232.1px) — not visible/rendered, negligible, not a V1 regression |
+| 6 | Settings reachable from Home via SETTINGS pill | PASS | `v_settings1.png` |
+| 7 | V4 — strap identity string stable across repeat Settings visits (no flicker) | PASS (as checkable without a strap) | `v_settings1.png`, `v7_settings_before_kill.png`, `v6_settings_hr_section.png` — all read "Polar H10" consistently, no ID-suffix flicker observed |
+| 8 | Settings BACK → returns to Home | PASS | `v_settingsback_home.png` |
+| 9 | System back from Home exits app (to watchface/tile carousel) | PASS | `v_sysback_home.png`; confirmed via `topResumedActivity=...wearable.sysui...` |
+| 10 | Pairing reachable from Home via "TAP TO PAIR STRAP" | PASS | `v_pairing1.png` |
+| 11 | V7 — background (`HOME` key) + `am kill` + relaunch from Pairing → lands on Home | PASS | `v7_pairing_kill_relaunch2.png` |
+| 12 | V7 — background (`HOME` key) + `am kill` + relaunch from Settings → lands on Home | PASS | `v7_settings_kill_relaunch2.png` |
+| 13 | V6 — resting-HR countdown ticks (two captures ~7-8s apart show different remaining seconds) | PASS | `v6_countdown_t0.png` ("Measuring… 59s"), `v6_countdown_t7.png` ("Measuring… 43s") |
+| 14 | V6 — terminal state after timeout shows RETRY affordance | PASS | `v6_terminal_retry.png` ("No strap data — wear the H10" / "tap to retry") |
+| 15 | V6 — tapping RETRY restarts the countdown clean, no lingering "tap to retry" subtitle under the live countdown | PASS | `v6_retry_tapped.png` ("Measuring… 59s", no leftover subtitle) |
+
+**Result: 14 PASS, 0 FAIL, 1 not checkable this session (GPS status line — requires a paired strap, deferred to Plan 4 per brief).**
+
+All Plan 3 watch fixes (V1, V2 adapted, V4 as checkable, V6, V7) hold up on real hardware. No regressions found. Do NOT start a run / no device-setting changes were honored throughout.
