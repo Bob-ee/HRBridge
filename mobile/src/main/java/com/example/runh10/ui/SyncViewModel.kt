@@ -3,7 +3,9 @@ package com.example.runh10.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.runh10.data.RunRepository
 import com.example.runh10.sync.PhoneSyncClient
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,12 +21,19 @@ data class SyncUiState(
 
 class SyncViewModel(app: Application) : AndroidViewModel(app) {
     private val client = PhoneSyncClient(app)
+    private val repo = RunRepository.get(app)
     private val _state = MutableStateFlow(SyncUiState())
     val state: StateFlow<SyncUiState> = _state.asStateFlow()
+
+    // Started once, at ViewModel construction (i.e. process/first-screen startup) — a mid-run
+    // process death leaves a meta sidecar + ndjson with no Room row (F1). onResume() joins this
+    // before syncing so a recovered run is already in Room when sync updates the feed.
+    private val recoveryJob: Job = viewModelScope.launch { runCatching { repo.recoverOrphans() } }
 
     /** Refresh HC + permission gates; auto-sync if ready and idle. */
     fun onResume() {
         viewModelScope.launch {
+            recoveryJob.join()
             val available = client.isHealthConnectReady()
             val granted = available && client.hasPermissions()
             _state.update { it.copy(hcAvailable = available, permissionsGranted = granted) }
@@ -34,7 +43,7 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
 
     fun syncNow() {
         if (_state.value.hcAvailable && _state.value.permissionsGranted && beginSyncIfIdle()) {
-            viewModelScope.launch { runSyncBody() }
+            viewModelScope.launch { recoveryJob.join(); runSyncBody() }
         }
     }
 

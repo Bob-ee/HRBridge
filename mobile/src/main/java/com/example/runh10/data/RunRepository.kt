@@ -4,10 +4,12 @@ import android.content.Context
 import com.example.runh10.parse.SessionParser
 import com.example.runh10.shared.model.SessionBundle
 import com.example.runh10.shared.model.SessionMeta
+import com.example.runh10.shared.model.SessionState
 import com.example.runh10.shared.zones.ZoneCalculator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.Calendar
 
@@ -22,6 +24,7 @@ class RunRepository(private val context: Context) {
     private val dir = File(context.filesDir, "sessions").apply { mkdirs() }
 
     fun fileFor(id: String): File = File(dir, "$id.ndjson")
+    fun metaFileFor(id: String): File = File(dir, "$id.meta.json")
 
     fun observeAll(): Flow<List<RunSummaryEntity>> = dao.observeAll()
     fun observeById(id: String): Flow<RunSummaryEntity?> = dao.observeById(id)
@@ -33,6 +36,7 @@ class RunRepository(private val context: Context) {
     suspend fun delete(id: String) {
         dao.delete(id)
         fileFor(id).delete()
+        metaFileFor(id).delete()
     }
 
     /** Current zone calculator from the athlete profile, or null until both HRs are set. */
@@ -79,6 +83,35 @@ class RunRepository(private val context: Context) {
         val f = fileFor(meta.sessionId)
         if (!f.exists()) return@withContext null
         f.useLines { SessionParser.parse(meta, it) }
+    }
+
+    /**
+     * Ingest sessions stranded by a mid-run process death (meta sidecar present, no Room
+     * row). The recovered run is honest: end = last sample's timestamp, moving time unknown
+     * (elapsed is used), and the name marks it recovered. Returns the count recovered.
+     */
+    suspend fun recoverOrphans(): Int = withContext(Dispatchers.IO) {
+        val known = dao.allIds().toSet()
+        val orphans = OrphanScanner.findOrphans(dir.listFiles()?.toList() ?: emptyList(), known)
+        var recovered = 0
+        for (metaFile in orphans) {
+            runCatching {
+                val meta = Json.decodeFromString(SessionMeta.serializer(), metaFile.readText())
+                val bundle = fileFor(meta.sessionId).useLines { SessionParser.parse(meta, it) }
+                if (bundle.samples.isEmpty()) { // nothing usable — clean up the stale files
+                    fileFor(meta.sessionId).delete(); metaFile.delete(); return@runCatching
+                }
+                val endMs = bundle.samples.last().ts
+                ingest(
+                    bundle = bundle.copy(meta = meta.copy(endEpochMs = endMs, state = SessionState.FINALIZED)),
+                    source = "phone",
+                    name = "Recovered run",
+                )
+                metaFile.delete()
+                recovered++
+            }
+        }
+        recovered
     }
 
     private fun defaultName(startMs: Long): String {

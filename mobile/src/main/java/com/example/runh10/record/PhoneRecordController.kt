@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
@@ -264,6 +265,12 @@ object PhoneRecordController {
         )
         meta = m
         writer = SafeLineWriter(repo.fileFor(m.sessionId).bufferedWriter())
+        // Persist meta NOW so a mid-run process death leaves a recoverable session
+        // (the watch has had this from day one; see reliability finding F1).
+        runCatching {
+            repo.metaFileFor(m.sessionId)
+                .writeText(Json.encodeToString(SessionMeta.serializer(), m))
+        }
 
         clock.start()
         _ui.value = _ui.value.copy(
@@ -402,12 +409,14 @@ object PhoneRecordController {
             movingMsOverride = finishedMovingMs.takeIf { it > 0 },
         )
         feel?.let { repo.updateNameFeel(m.sessionId, name, it) }
+        repo.metaFileFor(m.sessionId).delete()
         resetToReady()
         return m.sessionId
     }
 
     fun discardRun() {
         meta?.let { repo.fileFor(it.sessionId).delete() }
+        meta?.let { repo.metaFileFor(it.sessionId).delete() }
         writer?.close(); writer = null
         resetToReady()
     }

@@ -90,6 +90,9 @@ interface RunDao {
 
     @Query("DELETE FROM run_summary WHERE sessionId = :id")
     suspend fun delete(id: String)
+
+    @Query("SELECT sessionId FROM run_summary")
+    suspend fun allIds(): List<String>
 }
 
 @Database(entities = [RunSummaryEntity::class], version = 1, exportSchema = false)
