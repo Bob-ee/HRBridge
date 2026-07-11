@@ -206,11 +206,23 @@ class ExerciseClientManager(context: Context) {
      * The accumulated fallback distance deliberately REMAINS in the metrics: the
      * monotonic guard in [callback]'s update handler keeps HS's (lower, fallback-blind)
      * post-recovery totals from regressing it.
+     *
+     * The gps value written here is deliberately NOT the bare [lastHsAvailability]
+     * string: if that string is unchanged from the last intra-fallback availability
+     * update (see [onAvailabilityChanged]), SessionRecorder's value-change edge
+     * detector sees no diff and drops the fallback's end boundary from the EvtRow
+     * trail entirely. Prefixing with "FALLBACK_ENDED:" guarantees a value distinct
+     * from any raw availability string, so the boundary always emits. This is a
+     * single composite write rather than an ENDED marker followed by a raw-value
+     * write because _metrics is a StateFlow: two updates issued back-to-back can
+     * conflate into one emission and silently drop the intermediate value. The next
+     * genuine HS availability callback overwrites gps with its raw string, which is
+     * itself a change and emits correctly.
      */
     fun endFallback() {
         fallbackActive = false
         fallbackDistance = null
-        _metrics.update { it.copy(gps = lastHsAvailability) }
+        _metrics.update { it.copy(gps = "FALLBACK_ENDED:" + (lastHsAvailability ?: "UNKNOWN")) }
     }
 
     companion object {
