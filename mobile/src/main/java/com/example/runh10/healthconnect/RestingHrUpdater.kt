@@ -46,11 +46,11 @@ object RestingHrUpdater {
      * permission not being granted, or any HC error just means this pass quietly does nothing.
      */
     suspend fun checkOnce(context: Context) {
-        val athleteStore = AthleteStore(context)
-        val profile = athleteStore.current()
-        if (!profile.autoUpdateResting) return
-
         runCatching {
+            val athleteStore = AthleteStore(context)
+            val profile = athleteStore.current()
+            if (!profile.autoUpdateResting) return@runCatching
+
             val client = HealthConnectClient.getOrCreate(context)
             val granted = client.permissionController.getGrantedPermissions()
             if (READ_RESTING_HR_PERMISSION !in granted) return@runCatching
