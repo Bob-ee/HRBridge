@@ -242,6 +242,7 @@ object PhoneRecordController {
                     alt = if (loc.hasAltitude()) loc.altitude else null,
                     spd = if (loc.hasSpeed()) loc.speed.toDouble() else null,
                     dist = distanceM,
+                    acc = if (loc.hasAccuracy()) loc.accuracy.toDouble() else null,
                 ),
             )
         }

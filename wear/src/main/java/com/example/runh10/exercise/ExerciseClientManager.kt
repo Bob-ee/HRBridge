@@ -11,6 +11,7 @@ import androidx.health.services.client.data.ExerciseConfig
 import androidx.health.services.client.data.ExerciseLapSummary
 import androidx.health.services.client.data.ExerciseType
 import androidx.health.services.client.data.ExerciseUpdate
+import androidx.health.services.client.data.LocationAccuracy
 import androidx.health.services.client.data.LocationAvailability
 import com.example.runh10.workout.ExerciseMetrics
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,7 +38,13 @@ class ExerciseClientManager(context: Context) {
             val latest = update.latestMetrics
             val distance = (latest.getData(DataType.DISTANCE_TOTAL)?.total as? Number)?.toDouble()
             val speed = latest.getData(DataType.SPEED).lastOrNull()?.value
-            val location = latest.getData(DataType.LOCATION).lastOrNull()?.value
+            val locationPoint = latest.getData(DataType.LOCATION).lastOrNull()
+            val location = locationPoint?.value
+            // Per-fix horizontal accuracy rides on the DataPoint (not LocationData);
+            // guard against sentinel/garbage values the same way altitude is guarded.
+            val accuracy = (locationPoint?.accuracy as? LocationAccuracy)
+                ?.horizontalPositionErrorMeters
+                ?.takeUnless { it == Double.MAX_VALUE || !it.isFinite() || it < 0.0 }
             val cadence = latest.getData(DataType.STEPS_PER_MINUTE).lastOrNull()?.value
             _metrics.update {
                 it.copy(
@@ -49,6 +56,7 @@ class ExerciseClientManager(context: Context) {
                     // Double.MAX_VALUE (NOT null), so the ?: guard alone would record
                     // that garbage. Treat the sentinel as absent → honest null.
                     altitude = location?.altitude?.takeUnless { it == Double.MAX_VALUE } ?: it.altitude,
+                    accuracyM = accuracy ?: it.accuracyM,
                     cadenceSpm = (cadence as? Number)?.toDouble() ?: it.cadenceSpm,
                     exerciseState = update.exerciseStateInfo.state.toString(),
                 )

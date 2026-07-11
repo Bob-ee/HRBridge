@@ -9,6 +9,8 @@ data class ExerciseMetrics(
     val lat: Double? = null,
     val lon: Double? = null,
     val altitude: Double? = null,
+    /** Horizontal accuracy of the latest fix in meters, null when Health Services didn't report one. */
+    val accuracyM: Double? = null,
     val cadenceSpm: Double? = null,
     val gps: String = "UNKNOWN",
     val exerciseState: String = "—",

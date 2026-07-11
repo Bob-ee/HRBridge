@@ -16,6 +16,8 @@ data class LocRow(
     val alt: Double? = null,
     val spd: Double? = null,
     val dist: Double? = null,
+    /** Horizontal accuracy of the fix in meters, null when the source didn't report one. */
+    val acc: Double? = null,
 ) : SampleRow()
 
 @Serializable @SerialName("hr")

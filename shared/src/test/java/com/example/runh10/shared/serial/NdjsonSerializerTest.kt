@@ -27,6 +27,25 @@ class NdjsonSerializerTest {
         assertEquals(row, NdjsonSerializer.decode(NdjsonSerializer.encode(row)))
     }
 
+    @Test fun encodes_loc_row_accuracy_when_present() {
+        val line = NdjsonSerializer.encode(LocRow(ts = 1000, lat = 42.1, lon = -71.2, acc = 4.5))
+        assertEquals("""{"t":"loc","ts":1000,"lat":42.1,"lon":-71.2,"acc":4.5}""", line)
+    }
+
+    @Test fun round_trips_a_loc_row_with_accuracy() {
+        val row = LocRow(ts = 2000, lat = 42.1, lon = -71.2, spd = 3.1, dist = 12.0, acc = 7.25)
+        assertEquals(row, NdjsonSerializer.decode(NdjsonSerializer.encode(row)))
+    }
+
+    @Test fun decodes_legacy_loc_line_without_acc_as_null_accuracy() {
+        // A line exactly as written by pre-accuracy builds MUST keep parsing.
+        val row = NdjsonSerializer.decode(
+            """{"t":"loc","ts":1000,"lat":42.1,"lon":-71.2,"spd":3.1,"dist":12.0}"""
+        ) as LocRow
+        assertEquals(null, row.acc)
+        assertEquals(42.1, row.lat, 0.0)
+    }
+
     @Test fun tolerant_decode_drops_a_truncated_final_line() {
         val good = NdjsonSerializer.encode(HrRow(ts = 1, bpm = 100))
         val lines = sequenceOf(good, """{"t":"loc","ts":20""", "")  // truncated + blank

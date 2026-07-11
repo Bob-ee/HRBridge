@@ -62,7 +62,7 @@ class SessionRecorder(
                     lastState = mx.exerciseState
                 }
                 if (mx.lat != null && mx.lon != null) {
-                    writeLine(LocRow(ts = ts, lat = mx.lat, lon = mx.lon, alt = mx.altitude, spd = mx.speedMps, dist = mx.distanceMeters))
+                    writeLine(LocRow(ts = ts, lat = mx.lat, lon = mx.lon, alt = mx.altitude, spd = mx.speedMps, dist = mx.distanceMeters, acc = mx.accuracyM))
                 }
             }
         }

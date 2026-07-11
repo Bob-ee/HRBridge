@@ -79,6 +79,26 @@ class MainActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun hasBackgroundLocation(): Boolean = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * ACCESS_BACKGROUND_LOCATION keeps Health Services streaming brokered GPS after the
+     * display sleeps mid-run (the ~45s GPS-cutout bug). The platform requires it to be
+     * requested SEPARATELY, only after fine location is granted — the system then shows
+     * its own "allow all the time" screen. We auto-ask exactly once per install; if the
+     * user declines, nothing changes vs today (no nag loop, no blocking) — they can still
+     * grant it any time from system Settings > Apps > HR Bridge > Permissions.
+     */
+    private fun shouldAutoAskBackgroundLocation(): Boolean {
+        if (hasBackgroundLocation()) return false
+        val prefs = getSharedPreferences(PERMISSION_PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_BG_LOCATION_ASKED, false)) return false
+        prefs.edit().putBoolean(KEY_BG_LOCATION_ASKED, true).apply()
+        return true
+    }
+
     /** Media bridge client — created once; RunExperience starts it when shown. */
     private lateinit var mediaClient: WatchMediaClient
 
@@ -108,8 +128,22 @@ class MainActivity : ComponentActivity() {
                         ActivityResultContracts.RequestMultiplePermissions(),
                     ) { granted = hasAllPermissions() }
 
+                    // Background location must be requested on its own, AFTER the fine
+                    // location grant (mixing it into the bundle above would make the
+                    // whole request fail on API 30+). Denial is fine: recording works
+                    // as before, GPS just remains vulnerable to display-sleep cutouts.
+                    val bgLocationLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestPermission(),
+                    ) { /* result intentionally unused — no retry, no gating */ }
+
                     LaunchedEffect(Unit) {
                         if (!granted) launcher.launch(requiredPermissions)
+                    }
+
+                    LaunchedEffect(granted) {
+                        if (granted && shouldAutoAskBackgroundLocation()) {
+                            bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                        }
                     }
 
                     if (!granted) {
@@ -228,6 +262,9 @@ class MainActivity : ComponentActivity() {
         /** Launched by the quick-launch tile's START RUN action. */
         const val ACTION_TILE_START_RUN = "com.example.runh10.action.TILE_START_RUN"
         const val EXTRA_TILE_START = "tile_start_run"
+
+        private const val PERMISSION_PREFS = "permission_prompts"
+        private const val KEY_BG_LOCATION_ASKED = "bg_location_asked"
     }
 }
 

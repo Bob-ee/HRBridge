@@ -10,6 +10,10 @@
     <!-- GPS for the exercise route / distance / pace -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Keeps Health Services streaming brokered GPS after the display sleeps mid-run
+         (see docs/superpowers/plans/notes/2026-07-10-gps-cutout-diagnosis.md). Requested
+         at runtime in a separate step AFTER fine location, as the platform requires. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- BLE to the Polar H10 (API 31+) -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
