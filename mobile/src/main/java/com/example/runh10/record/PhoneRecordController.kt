@@ -100,6 +100,9 @@ object PhoneRecordController {
     private val _ui = MutableStateFlow(PhoneRunUi())
     val ui: StateFlow<PhoneRunUi> = _ui.asStateFlow()
 
+    /** sessionId of the run currently being recorded (if any) — null once saved/discarded. */
+    val activeSessionId: String? get() = meta?.sessionId
+
     private val _rememberedDevice = MutableStateFlow<ScanDevice?>(null)
     val rememberedDevice: StateFlow<ScanDevice?> get() = _rememberedDevice
 

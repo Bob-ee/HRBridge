@@ -95,14 +95,20 @@ class RunRepository(private val context: Context) {
      * Ingest sessions stranded by a mid-run process death (meta sidecar present, no Room
      * row). The recovered run is honest: end = last sample's timestamp, moving time unknown
      * (elapsed is used), and the name marks it recovered. Returns the count recovered.
+     *
+     * [excludeSessionId] must be the id of any session PhoneRecordController is currently
+     * recording: this is per-Activity and re-runs on every MainActivity creation, while a
+     * live phone run (singleton controller + FGS) survives Activity death, so without the
+     * exclusion recovery can delete or prematurely ingest a run that's still in progress.
      */
-    suspend fun recoverOrphans(): Int = withContext(Dispatchers.IO) {
+    suspend fun recoverOrphans(excludeSessionId: String? = null): Int = withContext(Dispatchers.IO) {
         val known = dao.allIds().toSet()
         val orphans = OrphanScanner.findOrphans(dir.listFiles()?.toList() ?: emptyList(), known)
         var recovered = 0
         for (metaFile in orphans) {
             runCatching {
                 val meta = Json.decodeFromString(SessionMeta.serializer(), metaFile.readText())
+                if (meta.sessionId == excludeSessionId) return@runCatching // live run — never touch it
                 val bundle = fileFor(meta.sessionId).useLines { SessionParser.parse(meta, it) }
                 if (bundle.samples.isEmpty()) { // nothing usable — clean up the stale files
                     fileFor(meta.sessionId).delete(); metaFile.delete(); return@runCatching
@@ -113,6 +119,10 @@ class RunRepository(private val context: Context) {
                     source = "phone",
                     name = "Recovered run",
                 )
+                // Route the recovered run through the existing hcPending retry path so
+                // repushHealthConnect (joined after recovery in SyncViewModel.onResume) picks
+                // it up — the write is idempotent, so this is harmless if it already landed.
+                dao.markHcPending(meta.sessionId, true)
                 metaFile.delete()
                 recovered++
             }

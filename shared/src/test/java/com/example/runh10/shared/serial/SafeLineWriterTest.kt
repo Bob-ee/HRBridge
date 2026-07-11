@@ -45,4 +45,17 @@ class SafeLineWriterTest {
         }
         SafeLineWriter(sink).close() // must not throw
     }
+
+    @Test fun failsClosedAfterRuntimeException() {
+        val sink = object : Writer() {
+            override fun write(cbuf: CharArray, off: Int, len: Int) {
+                throw RuntimeException("unexpected")
+            }
+            override fun flush() {}
+            override fun close() {}
+        }
+        val w = SafeLineWriter(sink)
+        assertFalse(w.writeLine("row1")) // must not propagate — fail-close instead
+        assertTrue(w.failed)
+    }
 }

@@ -1,6 +1,5 @@
 package com.example.runh10.shared.serial
 
-import java.io.IOException
 import java.io.Writer
 
 /**
@@ -19,7 +18,7 @@ class SafeLineWriter(private val out: Writer) {
         return try {
             out.write(line + "\n"); out.flush()
             true
-        } catch (e: IOException) {
+        } catch (e: Exception) { // widened from IOException: any Writer failure must fail-close, not crash the run
             failed = true
             runCatching { out.close() }
             false
