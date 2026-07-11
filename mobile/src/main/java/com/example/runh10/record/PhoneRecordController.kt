@@ -396,10 +396,12 @@ object PhoneRecordController {
             splits = splits.toList(),
         )
         val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
-        runCatching {
+        // hcOk is false when HC is unavailable, unpermissioned, OR the write itself threw — any of
+        // those means the run isn't in Health Connect yet, so it's flagged for retry below (F5).
+        val hcOk = runCatching {
             val hcWriter = HealthConnectWriter(appContext)
-            if (hcWriter.isAvailable() && hcWriter.hasAllPermissions()) hcWriter.write(bundle, rmssd)
-        }
+            hcWriter.isAvailable() && hcWriter.hasAllPermissions() && run { hcWriter.write(bundle, rmssd); true }
+        }.getOrDefault(false)
         repo.ingest(
             bundle = bundle,
             source = "phone",
@@ -408,6 +410,7 @@ object PhoneRecordController {
             precomputedHrvMs = rmssd.takeIf { it.isNotEmpty() }?.map { it.rmssdMs }?.average(),
             movingMsOverride = finishedMovingMs.takeIf { it > 0 },
         )
+        if (!hcOk) repo.markHcPending(m.sessionId, true)
         feel?.let { repo.updateNameFeel(m.sessionId, name, it) }
         repo.metaFileFor(m.sessionId).delete()
         resetToReady()

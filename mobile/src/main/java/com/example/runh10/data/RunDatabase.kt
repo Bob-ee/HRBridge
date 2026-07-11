@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -41,6 +43,7 @@ data class RunSummaryEntity(
     val routeJson: String,          // [[lat,lon],...] downsampled
     val hrSeriesJson: String,       // [[offsetSec,bpm],...] downsampled
     val feel: String?,              // easy | steady | hard | max
+    val hcPending: Boolean = false, // phone-recorded run whose Health Connect write failed; retry on resume
 )
 
 @Serializable
@@ -93,9 +96,22 @@ interface RunDao {
 
     @Query("SELECT sessionId FROM run_summary")
     suspend fun allIds(): List<String>
+
+    @Query("SELECT * FROM run_summary WHERE hcPending = 1")
+    suspend fun pendingHc(): List<RunSummaryEntity>
+
+    @Query("UPDATE run_summary SET hcPending = :pending WHERE sessionId = :id")
+    suspend fun markHcPending(id: String, pending: Boolean)
 }
 
-@Database(entities = [RunSummaryEntity::class], version = 1, exportSchema = false)
+/** v1 -> v2: add hcPending (F5 — retry Health Connect writes that failed for phone-recorded runs). */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE run_summary ADD COLUMN hcPending INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+@Database(entities = [RunSummaryEntity::class], version = 2, exportSchema = false)
 abstract class RunDatabase : RoomDatabase() {
     abstract fun runDao(): RunDao
 
@@ -104,7 +120,7 @@ abstract class RunDatabase : RoomDatabase() {
         fun get(context: Context): RunDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext, RunDatabase::class.java, "hrbridge.db",
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
         }
     }
 }

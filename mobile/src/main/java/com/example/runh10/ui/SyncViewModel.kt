@@ -37,13 +37,22 @@ class SyncViewModel(app: Application) : AndroidViewModel(app) {
             val available = client.isHealthConnectReady()
             val granted = available && client.hasPermissions()
             _state.update { it.copy(hcAvailable = available, permissionsGranted = granted) }
-            if (available && granted && beginSyncIfIdle()) runSyncBody()
+            if (available && granted) {
+                // Re-push phone-recorded runs whose original HC write failed (F5) — safe to
+                // retry on every resume: idempotent, and a no-op once nothing is pending.
+                runCatching { repo.repushHealthConnect(getApplication<Application>()) }
+                if (beginSyncIfIdle()) runSyncBody()
+            }
         }
     }
 
     fun syncNow() {
         if (_state.value.hcAvailable && _state.value.permissionsGranted && beginSyncIfIdle()) {
-            viewModelScope.launch { recoveryJob.join(); runSyncBody() }
+            viewModelScope.launch {
+                recoveryJob.join()
+                runCatching { repo.repushHealthConnect(getApplication<Application>()) }
+                runSyncBody()
+            }
         }
     }
 

@@ -1,7 +1,11 @@
 package com.example.runh10.data
 
 import android.content.Context
+import com.example.runh10.healthconnect.HealthConnectWriter
+import com.example.runh10.healthconnect.RmssdCalculator
 import com.example.runh10.parse.SessionParser
+import com.example.runh10.shared.Constants
+import com.example.runh10.shared.model.RrRow
 import com.example.runh10.shared.model.SessionBundle
 import com.example.runh10.shared.model.SessionMeta
 import com.example.runh10.shared.model.SessionState
@@ -11,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.time.ZoneId
 import java.util.Calendar
 
 /**
@@ -32,6 +37,7 @@ class RunRepository(private val context: Context) {
     fun observeThisWeek(): Flow<List<RunSummaryEntity>> = dao.observeSince(startOfWeekMs())
 
     suspend fun updateNameFeel(id: String, name: String, feel: String?) = dao.updateNameFeel(id, name, feel)
+    suspend fun markHcPending(id: String, pending: Boolean) = dao.markHcPending(id, pending)
 
     suspend fun delete(id: String) {
         dao.delete(id)
@@ -112,6 +118,43 @@ class RunRepository(private val context: Context) {
             }
         }
         recovered
+    }
+
+    /**
+     * Retry Health Connect writes for phone-recorded runs whose original write failed (F5).
+     * Watch-synced runs already retry via the normal sync path — this only covers rows
+     * PhoneRecordController.saveRun flagged with hcPending. The write is idempotent
+     * (clientRecordId upsert), so re-pushing an already-written session is harmless.
+     *
+     * The meta sidecar is gone by the time a row reaches here (deleted on save), so the
+     * SessionMeta is reconstructed from the Room row rather than replaying the original file.
+     * startZoneId isn't persisted on the row; the current system zone is used as a stand-in —
+     * it only affects the display-offset on HC records, not the recorded instants.
+     */
+    suspend fun repushHealthConnect(context: Context): Int = withContext(Dispatchers.IO) {
+        val pending = dao.pendingHc()
+        if (pending.isEmpty()) return@withContext 0
+        val writer = HealthConnectWriter(context)
+        if (!writer.isAvailable() || !writer.hasAllPermissions()) return@withContext 0
+        var pushed = 0
+        for (row in pending) {
+            runCatching {
+                val meta = SessionMeta(
+                    sessionId = row.sessionId,
+                    startEpochMs = row.startMs,
+                    startZoneId = ZoneId.systemDefault().id,
+                    endEpochMs = row.endMs,
+                    appVersion = Constants.APP_VERSION,
+                    state = SessionState.FINALIZED,
+                )
+                val bundle = parseStored(meta) ?: return@runCatching
+                val rmssd = RmssdCalculator.compute(bundle.samples.filterIsInstance<RrRow>())
+                writer.write(bundle, rmssd)
+                dao.markHcPending(row.sessionId, false)
+                pushed++
+            }
+        }
+        pushed
     }
 
     private fun defaultName(startMs: Long): String {
